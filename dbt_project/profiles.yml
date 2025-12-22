@@ -1,0 +1,15 @@
+nba_goat:
+  outputs:
+    dev:
+      type: duckdb
+      path: ../data/nba_goat.db
+      schema: main
+      threads: 4
+      
+    prod:
+      type: duckdb
+      path: ../data/nba_goat_prod.db
+      schema: main
+      threads: 8
+      
+  target: dev
