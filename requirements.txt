@@ -66,3 +66,7 @@ pydantic                    # Data validation
 loguru                      # Better logging
 click                       # CLI creation
 tqdm                        # Progress bars
+# Web scraping dependencies
+requests
+beautifulsoup4
+lxml
