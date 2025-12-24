@@ -199,20 +199,18 @@ class BasketballReferenceScraper:
     
     def _parse_career_stats(self, html_text: str) -> Dict[str, Any]:
         """
-        Extract career stats using data-stat attribute (more reliable than table IDs)
+        Extract career stats AND years active from the per-game table
+        HYBRID: Uses Gemini's regex approach for Games (more reliable)
         """
         stats = {}
         
         try:
-            # Extract table by searching for unique data-stat attribute
-            # 'pts_per_g' only appears in the per-game stats table
             table_html = self._extract_table_surgically(html_text, 'pts_per_g')
             
             if not table_html:
                 logger.warning("Could not extract per_game table using pts_per_g")
                 return stats
             
-            # Now parse the extracted table with BeautifulSoup
             soup = BeautifulSoup(table_html, 'html.parser')
             table = soup.find('table')
             
@@ -220,60 +218,56 @@ class BasketballReferenceScraper:
                 logger.warning("Extracted HTML does not contain valid table")
                 return stats
             
-            # Find the Career row - Basketball Reference shows it as "X Yrs" (e.g., "15 Yrs")
+            # Find the Career row
             career_row = None
             
-            # Strategy 1: Check tfoot for row starting with number + "Yrs" or "Career"
+            def is_career_row(row):
+                txt = row.get_text().strip()
+                return 'Career' in txt or re.search(r'^\d+\s+Yrs', txt)
+            
             tfoot = table.find('tfoot')
             if tfoot:
-                logger.debug("Searching tfoot for Career row...")
                 for row in tfoot.find_all('tr'):
-                    row_text = row.get_text().strip()
-                    logger.debug(f"tfoot row text: {row_text[:50]}...")
-                    
-                    # Match patterns like "15 Yrs" or "Career"
-                    if re.search(r'^\d+\s+Yrs', row_text) or 'Career' in row_text:
-                        # Make sure it has data cells (not just a header)
-                        if row.find('td'):
-                            career_row = row
-                            logger.debug(f"Found Career row in tfoot: {row_text[:30]}")
-                            break
+                    if is_career_row(row):
+                        career_row = row
+                        break
             
-            # Strategy 2: Check tbody for Career row
             if not career_row:
                 tbody = table.find('tbody')
                 if tbody:
-                    logger.debug("Searching tbody for Career row...")
                     for row in tbody.find_all('tr'):
-                        row_text = row.get_text().strip()
-                        
-                        # Match "X Yrs" or "Career"
-                        if (re.search(r'^\d+\s+Yrs', row_text) or 'Career' in row_text) and row.find('td'):
+                        if is_career_row(row):
                             career_row = row
-                            logger.debug(f"Found Career row in tbody: {row_text[:30]}")
                             break
             
-            # Strategy 3: Look for any row with class containing "career"
             if not career_row:
-                logger.debug("Searching for row with career class...")
-                career_row = table.find('tr', class_=lambda x: x and 'career' in x.lower())
-                if career_row and career_row.find('td'):
-                    logger.debug("Found Career row by class attribute")
-            
-            if not career_row:
-                logger.warning("Could not find Career row in per_game table after trying all strategies")
-                # DEBUG: Print first few rows to see structure
-                logger.debug("First 3 rows of table:")
-                for i, row in enumerate(table.find_all('tr')[:3]):
-                    logger.debug(f"  Row {i}: {row.get_text()[:100]}")
+                logger.warning("Could not find Career row in per_game table")
                 return stats
             
             logger.debug(f"Career row found! Content: {career_row.get_text()[:100]}")
             
-            # Extract stats from the career row
-            stats['games_played'] = self._parse_table_cell(
-                career_row.find('td', {'data-stat': 'g'})
-            )
+            # Extract Years Active from first cell
+            first_cell = career_row.find('th')
+            if first_cell:
+                years_text = first_cell.get_text().strip()
+                years_match = re.search(r'(\d+)\s+Yrs', years_text)
+                if years_match:
+                    stats['years_active'] = years_match.group(1)
+                elif 'Career' in years_text:
+                    stats['years_active'] = 'Career'
+            
+            # GEMINI'S FIX: Extract Games using regex on full row text (more reliable)
+            row_text_full = career_row.get_text().strip()
+            games_match = re.search(r'^\d+\s+Yrs\s+(\d+)', row_text_full)
+            
+            if games_match:
+                stats['games_played'] = games_match.group(1)
+            else:
+                # Fallback to cell lookup
+                games_cell = career_row.find(['td', 'th'], {'data-stat': 'g'})
+                stats['games_played'] = self._parse_table_cell(games_cell)
+            
+            # Extract other stats
             stats['points_per_game'] = self._parse_table_cell(
                 career_row.find('td', {'data-stat': 'pts_per_g'})
             )
@@ -284,7 +278,7 @@ class BasketballReferenceScraper:
                 career_row.find('td', {'data-stat': 'ast_per_g'})
             )
             
-            logger.info(f"Parsed career stats: PPG={stats.get('points_per_game')}, RPG={stats.get('rebounds_per_game')}, APG={stats.get('assists_per_game')}")
+            logger.info(f"Parsed career stats: Games={stats.get('games_played')}, PPG={stats.get('points_per_game')}, Years={stats.get('years_active')}")
             
         except Exception as e:
             logger.error(f"Error parsing career stats: {e}", exc_info=True)
@@ -384,57 +378,53 @@ class BasketballReferenceScraper:
     
     def _parse_bio_info(self, html_text: str) -> Dict[str, Any]:
         """
-        Parse biographical information using regex on raw text
-        BeautifulSoup fails because meta div might be in comments or dynamically loaded
+        Parse biographical information with FIXED position regex
+        
+        The position text comes AFTER the closing </strong> tag, not inside it.
+        HTML structure: Position:\n</strong>\nShooting Guard and Small Forward\n&#9642;
+        
+        Critical fix: Handle HTML entity &#9642; (not Unicode ▪)
         """
         info = {}
         
         try:
-            # Position - look for the strong tag pattern
-            # Pattern: <strong>Shooting Guard</strong> or Position: Shooting Guard
-            pos_patterns = [
-                r'Position:\s*<strong>([^<]+)</strong>',
-                r'Position:\s*([A-Z][a-z]+\s+[A-Z][a-z]+)',
-                r'Position:\s*([A-Z][a-z]+)',
-            ]
+            # FIXED POSITION REGEX - Handles both &#9642; (HTML entity) and ▪ (Unicode)
+            # Pattern captures text AFTER </strong> up to the bullet point or next section
+            pos_match = re.search(
+                r'Position:\s*</strong>\s*([A-Za-z\s]+?)(?:\s*&#9642;|\s*▪|\s*<strong>|\s*Shoots)',
+                html_text,
+                re.DOTALL  # Critical: handles literal \n newlines
+            )
             
-            for pattern in pos_patterns:
-                match = re.search(pattern, html_text)
-                if match:
-                    position = match.group(1).strip()
-                    # Clean up any HTML entities or extra text
-                    position = position.split('▪')[0].split('•')[0].strip()
-                    if position and len(position) < 30:  # Sanity check
-                        info['position'] = position
-                        logger.debug(f"Found position: {position}")
-                        break
-            
-            # Years Active - look for the experience or career span
-            # Patterns: "1984-2003" or "15 years"
-            years_patterns = [
-                r'(\d{4})\s*-\s*(\d{4})',  # 1984-2003
-                r'(\d{4})\s*-\s*Present',   # 1984-Present
-            ]
-            
-            for pattern in years_patterns:
-                match = re.search(pattern, html_text)
-                if match:
-                    if 'Present' in match.group(0):
-                        info['years_active'] = f"{match.group(1)}-Present"
-                    else:
-                        info['years_active'] = f"{match.group(1)}-{match.group(2)}"
-                    logger.debug(f"Found years active: {info['years_active']}")
-                    break
+            if pos_match:
+                position = pos_match.group(1).strip()
+                
+                # Clean up whitespace and newlines
+                position = ' '.join(position.split())
+                
+                # Handle "and" - keep only the first position mentioned
+                # "Shooting Guard and Small Forward" -> "Shooting Guard"
+                if ' and ' in position:
+                    position = position.split(' and ')[0].strip()
+                
+                # Final validation: reasonable length and not empty
+                if position and len(position) < 30:
+                    info['position'] = position
+                    logger.info(f"Found position: {position}")
+                else:
+                    logger.warning(f"Position extracted but invalid: '{position}'")
+            else:
+                logger.warning("Position regex did not match")
             
         except Exception as e:
-            logger.error(f"Error parsing bio info: {e}")
+            logger.error(f"Error parsing bio info: {e}", exc_info=True)
         
         return info
     
     def _count_accolades(self, html_text: str) -> Dict[str, int]:
         """
-        Count accolades using regex on raw HTML text (Gemini's approach - more reliable)
-        BeautifulSoup can't find the bling div because it's hidden or dynamically loaded
+        Count accolades - CORRECTED with actual Basketball Reference formats
+        Key finding: "All Star" appears with SPACE, not hyphen, and uses lowercase "x"
         """
         accolades = {
             'championships': 0,
@@ -444,56 +434,61 @@ class BasketballReferenceScraper:
         }
         
         try:
-            # Championships - Pattern: "6× NBA Champ" or "6x NBA champion"
-            champ_patterns = [
-                r'(\d+)\s*[×x]\s*NBA\s+[Cc]hamp(?:ion)?',
-            ]
-            
-            for pattern in champ_patterns:
-                match = re.search(pattern, html_text)
-                if match:
-                    accolades['championships'] = int(match.group(1))
+            # Championships - Pattern: "6x NBA Champ"
+            champ_match = re.search(
+                r'(\d+)\s*[×x]\s*NBA\s+[Cc]hamp',
+                html_text,
+                re.IGNORECASE
+            )
+            if champ_match:
+                champ_num = int(champ_match.group(1))
+                if 1 <= champ_num <= 20:
+                    accolades['championships'] = champ_num
                     logger.debug(f"Found {accolades['championships']} championships")
-                    break
             
-            # MVP Awards - Pattern: "5× MVP" or "5x NBA MVP"
+            # MVP Awards
             mvp_patterns = [
-                r'(\d+)\s*[×x]\s*NBA\s+Most\s+Valuable\s+Player',
                 r'(\d+)\s*[×x]\s*NBA\s+MVP',
-                r'(\d+)\s*[×x]\s*MVP(?:\s|<)',  # Must be followed by space or HTML tag
+                r'(\d+)\s*[×x]\s*MVP',
             ]
             
             for pattern in mvp_patterns:
-                match = re.search(pattern, html_text)
+                match = re.search(pattern, html_text, re.IGNORECASE)
                 if match:
-                    accolades['mvp_awards'] = int(match.group(1))
-                    logger.debug(f"Found {accolades['mvp_awards']} MVP awards")
-                    break
+                    mvp_num = int(match.group(1))
+                    if 1 <= mvp_num <= 10:
+                        accolades['mvp_awards'] = mvp_num
+                        logger.debug(f"Found {accolades['mvp_awards']} MVP awards")
+                        break
             
-            # All-Star Selections - Pattern: "14× All-Star" or "14x NBA All-Star"
+            # ALL-STAR - CORRECTED FORMAT
+            # Basketball Reference uses: "14x All Star" (space, not hyphen) and lowercase x
             allstar_patterns = [
-                r'(\d+)\s*[×x]\s*NBA\s+All-Star',
-                r'(\d+)\s*[×x]\s*All-Star',
+                r'(\d+)\s*[×x]\s*All\s+Star',      # "14x All Star" (with space)
+                r'(\d+)\s*[×x]\s*All-Star',        # "14x All-Star" (with hyphen)
+                r'(\d+)\s+All-Star',                # "14 All-Star" (no x)
             ]
             
             for pattern in allstar_patterns:
-                match = re.search(pattern, html_text)
+                match = re.search(pattern, html_text, re.IGNORECASE)
                 if match:
-                    accolades['all_star_selections'] = int(match.group(1))
-                    logger.debug(f"Found {accolades['all_star_selections']} All-Star selections")
-                    break
+                    all_star_num = int(match.group(1))
+                    if 1 <= all_star_num <= 30:
+                        accolades['all_star_selections'] = all_star_num
+                        logger.debug(f"Found {accolades['all_star_selections']} All-Star selections")
+                        break
             
-            # All-NBA Selections - Pattern: "11× All-NBA" or "10x All-NBA"
-            allnba_patterns = [
+            # All-NBA Selections
+            an_match = re.search(
                 r'(\d+)\s*[×x]\s*All-NBA',
-            ]
-            
-            for pattern in allnba_patterns:
-                match = re.search(pattern, html_text)
-                if match:
-                    accolades['all_nba_selections'] = int(match.group(1))
+                html_text,
+                re.IGNORECASE
+            )
+            if an_match:
+                all_nba_num = int(an_match.group(1))
+                if 1 <= all_nba_num <= 25:
+                    accolades['all_nba_selections'] = all_nba_num
                     logger.debug(f"Found {accolades['all_nba_selections']} All-NBA selections")
-                    break
             
             logger.info(f"Accolades: {accolades['championships']} championships, {accolades['mvp_awards']} MVPs, {accolades['all_star_selections']} All-Stars, {accolades['all_nba_selections']} All-NBA")
         
