@@ -1,6 +1,6 @@
 """
-Basketball Reference Web Scraper - Version 29 "Stable Release"
-Fixes TypeError when parsing single awards (like Jordan's DPOY) that lack a "1x" prefix.
+Basketball Reference Web Scraper - Version 30 "Efficiency Update"
+Adds shooting percentages, minutes, and usage rate for complete player evaluation.
 """
 import json
 import logging
@@ -8,10 +8,8 @@ import re
 import time
 from dataclasses import dataclass, asdict
 from typing import Optional, Dict, Any, List
-
 from bs4 import BeautifulSoup
 from curl_cffi import requests
-
 from src.storage.storage_interface import get_storage
 
 # Configure logging
@@ -36,10 +34,17 @@ class PlayerStats:
     assists_per_game: Optional[float] = None
     steals_per_game: Optional[float] = None
     blocks_per_game: Optional[float] = None
+    minutes_per_game: Optional[float] = None
+    
+    # Shooting efficiency
+    field_goal_pct: Optional[float] = None
+    three_point_pct: Optional[float] = None
+    free_throw_pct: Optional[float] = None
     
     # Advanced metrics
     true_shooting_pct: Optional[float] = None
     player_efficiency_rating: Optional[float] = None
+    usage_rate: Optional[float] = None
     box_plus_minus: Optional[float] = None
     win_shares: Optional[float] = None
     win_shares_per_48: Optional[float] = None
@@ -179,7 +184,7 @@ class BasketballReferenceScraper:
             table_html = html_text[table_start:table_end]
             
             # Remove comment markers if present (Basketball Reference hides tables in comments)
-            table_html = table_html.replace('', '')
+            table_html = table_html.replace('<!--', '').replace('-->', '')
             
             logger.debug(f"Extracted table ({len(table_html)} chars)")
             return table_html
@@ -187,6 +192,15 @@ class BasketballReferenceScraper:
         except Exception as e:
             logger.error(f"Error in surgical extraction: {e}", exc_info=True)
             return None
+        
+    def _extract_bling_section(self, html_text: str) -> Optional[str]:
+        """Extract the <ul id="bling">...</ul> accolades block (raw HTML)."""
+        m = re.search(
+            r'<ul[^>]*id="bling"[^>]*>.*?</ul>',
+            html_text,
+            flags=re.IGNORECASE | re.DOTALL
+        ) 
+        return m.group(0) if m else None
     
     def _parse_table_cell(self, cell) -> Optional[str]:
         """Safely extract text from table cell"""
@@ -198,7 +212,7 @@ class BasketballReferenceScraper:
     def _parse_career_stats(self, html_text: str) -> Dict[str, Any]:
         """
         Extract career stats AND years active from the per-game table
-        NOW INCLUDES: Steals and Blocks per game for defensive evaluation
+        NOW INCLUDES: Steals, Blocks, Minutes, and Shooting Percentages
         """
         stats = {}
         
@@ -265,6 +279,22 @@ class BasketballReferenceScraper:
                 games_cell = career_row.find(['td', 'th'], {'data-stat': 'g'})
                 stats['games_played'] = self._parse_table_cell(games_cell)
             
+            # Extract minutes per game
+            stats['minutes_per_game'] = self._parse_table_cell(
+                career_row.find('td', {'data-stat': 'mp_per_g'})
+            )
+            
+            # Extract shooting percentages
+            stats['field_goal_pct'] = self._parse_table_cell(
+                career_row.find('td', {'data-stat': 'fg_pct'})
+            )
+            stats['three_point_pct'] = self._parse_table_cell(
+                career_row.find('td', {'data-stat': 'fg3_pct'})
+            )
+            stats['free_throw_pct'] = self._parse_table_cell(
+                career_row.find('td', {'data-stat': 'ft_pct'})
+            )
+            
             # Extract offensive stats
             stats['points_per_game'] = self._parse_table_cell(
                 career_row.find('td', {'data-stat': 'pts_per_g'})
@@ -276,7 +306,7 @@ class BasketballReferenceScraper:
                 career_row.find('td', {'data-stat': 'ast_per_g'})
             )
             
-            # Extract defensive stats (NEW in v27)
+            # Extract defensive stats
             stats['steals_per_game'] = self._parse_table_cell(
                 career_row.find('td', {'data-stat': 'stl_per_g'})
             )
@@ -284,7 +314,7 @@ class BasketballReferenceScraper:
                 career_row.find('td', {'data-stat': 'blk_per_g'})
             )
             
-            logger.info(f"Parsed career stats: Games={stats.get('games_played')}, PPG={stats.get('points_per_game')}, SPG={stats.get('steals_per_game')}, BPG={stats.get('blocks_per_game')}, Years={stats.get('years_active')}")
+            logger.info(f"Parsed career stats: Games={stats.get('games_played')}, PPG={stats.get('points_per_game')}, FG%={stats.get('field_goal_pct')}, MPG={stats.get('minutes_per_game')}, Years={stats.get('years_active')}")
             
         except Exception as e:
             logger.error(f"Error parsing career stats: {e}", exc_info=True)
@@ -294,6 +324,7 @@ class BasketballReferenceScraper:
     def _parse_advanced_stats(self, html_text: str) -> Dict[str, Any]:
         """
         Extract advanced stats using data-stat attribute (more reliable)
+        NOW INCLUDES: Usage Rate
         """
         stats = {}
         
@@ -362,6 +393,9 @@ class BasketballReferenceScraper:
             stats['true_shooting_pct'] = self._parse_table_cell(
                 career_row.find('td', {'data-stat': 'ts_pct'})
             )
+            stats['usage_rate'] = self._parse_table_cell(
+                career_row.find('td', {'data-stat': 'usg_pct'})
+            )
             stats['box_plus_minus'] = self._parse_table_cell(
                 career_row.find('td', {'data-stat': 'bpm'})
             )
@@ -375,7 +409,7 @@ class BasketballReferenceScraper:
                 career_row.find('td', {'data-stat': 'vorp'})
             )
             
-            logger.info(f"Parsed advanced stats: PER={stats.get('player_efficiency_rating')}, WS={stats.get('win_shares')}")
+            logger.info(f"Parsed advanced stats: PER={stats.get('player_efficiency_rating')}, USG%={stats.get('usage_rate')}, WS={stats.get('win_shares')}")
             
         except Exception as e:
             logger.error(f"Error parsing advanced stats: {e}", exc_info=True)
@@ -426,7 +460,7 @@ class BasketballReferenceScraper:
             logger.error(f"Error parsing bio info: {e}", exc_info=True)
         
         return info
-
+    
     def _extract_count(self, html_text: str, patterns: List[str], max_val: int = 50) -> int:
         """
         Helper to extract accolade counts using regex.
@@ -453,6 +487,18 @@ class BasketballReferenceScraper:
         """
         Count accolades - EXPANDED in v28 with defensive and clutch metrics.
         FIXED: Handles single-award instances (missing "1x") correctly.
+
+        IMPORTANT FIX (DPOY):
+        - We must NOT regex DPOY against the full page HTML because every player page contains
+        generic navigation links like /awards/dpoy.html which cause "phantom" matches.
+        - The true awards for a player live inside <ul id="bling"> ... </ul>.
+        - Basketball-Reference expresses DPOY as "Def. POY" in that bling list:
+        - "2x Def. POY"  (multi-award)
+        - "1987-88 Def. POY" (single-award, year-form, no leading "1x")
+        - Therefore we:
+            1) Extract the bling section
+            2) Run DPOY patterns ONLY on that bling snippet
+            3) Use patterns that match "Def. POY" forms
         """
         accolades = {
             'championships': 0,
@@ -464,70 +510,89 @@ class BasketballReferenceScraper:
             'all_defensive_selections': 0,
             'dpoy_awards': 0
         }
-        
+
         try:
-            # Championships
+            # Championships (safe on full HTML)
             accolades['championships'] = self._extract_count(
-                html_text, 
+                html_text,
                 [r'(\d+)\s*[×x]\s*NBA\s+[Cc]hamp']
             )
-            
-            # MVP Awards
+
+            # MVP Awards (safe on full HTML)
             accolades['mvp_awards'] = self._extract_count(
                 html_text,
                 [r'(\d+)\s*[×x]\s*NBA\s+MVP', r'(\d+)\s*[×x]\s*MVP']
             )
-            
-            # Finals MVP Awards
+
+            # Finals MVP Awards (safe on full HTML)
             accolades['finals_mvp_awards'] = self._extract_count(
                 html_text,
                 [r'(\d+)\s*[×x]\s*Finals\s+MVP']
             )
-            
-            # ALL-STAR
+
+            # ALL-STAR (safe on full HTML; you also have a nuclear option elsewhere—leave it)
             accolades['all_star_selections'] = self._extract_count(
                 html_text,
                 [
-                    r'(\d+)\s*[×x]\s*All\s+Star', 
-                    r'(\d+)\s*[×x]\s*All-Star', 
+                    r'(\d+)\s*[×x]\s*All\s+Star',
+                    r'(\d+)\s*[×x]\s*All-Star',
                     r'(\d+)\s+All-Star'
                 ]
             )
-            
-            # All-NBA Selections
+
+            # All-NBA Selections (safe on full HTML)
             accolades['all_nba_selections'] = self._extract_count(
                 html_text,
                 [r'(\d+)\s*[×x]\s*All-NBA']
             )
-            
-            # All-Defensive Team Selections
+
+            # All-Defensive Team Selections (safe on full HTML)
             accolades['all_defensive_selections'] = self._extract_count(
                 html_text,
                 [r'(\d+)\s*[×x]\s*All-Defensive']
             )
-            
-            # Defensive Player of the Year
-            # Now matches "1x DPOY" OR just "Defensive Player of the Year" (implied 1)
+
+            # ---------------------------------------------------------------------
+            # DPOY FIX: Scope to BLING section + match Basketball-Reference wording
+            # ---------------------------------------------------------------------
+            # NOTE: Requires the helper method:
+            #   def _extract_bling_section(self, html_text: str) -> Optional[str]:
+            #       ...
+            bling_html = self._extract_bling_section(html_text) or ""
+
             accolades['dpoy_awards'] = self._extract_count(
-                html_text,
+                bling_html,
                 [
-                    r'(?:(\d+)\s*[×x]\s*)?Defensive\s+Player\s+of\s+the\s+Year',
-                    r'(?:(\d+)\s*[×x]\s*)?DPOY'
-                ]
+                    # Multi-award form: "2x Def. POY"
+                    r'(\d{1,2})\s*[×x]\s*Def\.\s*POY',
+
+                    # Single-award year form: "1987-88 Def. POY" (no number => implied 1)
+                    r'\b\d{4}-\d{2}\s*Def\.\s*POY\b',
+
+                    # Fallback single form (rare but safe): "Def. POY" => implied 1
+                    r'\bDef\.\s*POY\b',
+                ],
+                max_val=10
             )
-            
-            # Scoring Titles
+
+            # Scoring Titles (safe on full HTML)
             accolades['scoring_titles'] = self._extract_count(
                 html_text,
                 [r'(?:(\d+)\s*[×x]\s*)?(?:NBA\s+)?Scoring\s+(?:Champion|Champ|Leader)']
             )
-            
-            logger.info(f"Accolades: {accolades['championships']} rings, {accolades['mvp_awards']} MVPs, {accolades['finals_mvp_awards']} FMVPs, {accolades['all_star_selections']} All-Stars, {accolades['all_nba_selections']} All-NBA, {accolades['all_defensive_selections']} All-Def, {accolades['dpoy_awards']} DPOY")
-        
+
+            logger.info(
+                f"Accolades: {accolades['championships']} rings, {accolades['mvp_awards']} MVPs, "
+                f"{accolades['finals_mvp_awards']} FMVPs, {accolades['all_star_selections']} All-Stars, "
+                f"{accolades['all_nba_selections']} All-NBA, {accolades['all_defensive_selections']} All-Def, "
+                f"{accolades['dpoy_awards']} DPOY"
+            )
+
         except Exception as e:
             logger.error(f"Error counting accolades: {e}", exc_info=True)
-        
+
         return accolades
+
     
     def scrape_player(self, player_id: str, player_name: str) -> Optional[PlayerStats]:
         """
@@ -562,8 +627,6 @@ class BasketballReferenceScraper:
             
             # Update player object with type conversion
             for key, value in all_data.items():
-                # FIXED: Logic bug. Previously checked "and value", which skipped 0s.
-                # Now checks "is not None" so 0s are correctly recorded.
                 if hasattr(player, key) and value is not None:
                     try:
                         # Integer fields
@@ -574,9 +637,11 @@ class BasketballReferenceScraper:
                             setattr(player, key, int(value))
                         # Float fields
                         elif key in ['points_per_game', 'rebounds_per_game', 'assists_per_game',
-                                     'steals_per_game', 'blocks_per_game',
-                                     'true_shooting_pct', 'player_efficiency_rating', 'box_plus_minus',
-                                     'win_shares', 'win_shares_per_48', 'value_over_replacement']:
+                                     'steals_per_game', 'blocks_per_game', 'minutes_per_game',
+                                     'field_goal_pct', 'three_point_pct', 'free_throw_pct',
+                                     'true_shooting_pct', 'player_efficiency_rating', 'usage_rate',
+                                     'box_plus_minus', 'win_shares', 'win_shares_per_48', 
+                                     'value_over_replacement']:
                             setattr(player, key, float(value))
                         else:
                             setattr(player, key, value)
@@ -645,8 +710,8 @@ GOAT_PLAYERS = {
 
 def main():
     """Main execution function"""
-    logger.info("Starting Basketball Reference scraper - Version 29 'Stable Release'")
-    logger.info(f"Now capturing 25 fields including defensive metrics and clutch accolades")
+    logger.info("Starting Basketball Reference scraper - Version 30 'Efficiency Update'")
+    logger.info(f"Now capturing 30 fields including shooting percentages and usage rate")
     logger.info(f"Scraping {len(GOAT_PLAYERS)} players")
     
     scraper = BasketballReferenceScraper()
