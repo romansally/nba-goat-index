@@ -27,12 +27,11 @@
 - [ ] This PR does NOT change scoring behavior, methodology, or data contracts
 - [ ] **OR** behavior was changed intentionally AND (a) an ADR exists (when required) AND (b) `method_version` was bumped (when scoring outputs can change) AND (c) methodology doc updated when meaning changed
 
-### Online Ingestion Check
+### Data Policy Check (CLAUDE.md Rule 2)
 
-(Reminder: default is `INGEST_MODE=offline`.)
-
-- [ ] This PR does NOT use online ingestion
-- [ ] **OR** online ingestion was used AND `INGEST_MODE=online` was explicitly set AND: caching confirmed (`data/raw/`), no raw data committed, `docs/sources.md` reviewed/updated
+- [ ] This PR does NOT touch data acquisition or `data/seed/`
+- [ ] **OR** acquisition/seed changed AND: raw dumps stayed gitignored (`data/raw/`), only curated seed CSVs committed, `docs/sources.md` provenance log updated
+- [ ] No synthetic fixture data feeds analysis outputs; no real data added to `tests/fixtures/`
 
 ### The Key Question
 

@@ -8,7 +8,7 @@
 I just implemented [feature name]. Before I submit for review, I need you to pressure-test my test suite.
 
 **Read the relevant PRD or micro-PRD intent:** `docs/prd/<feature>.md` or PR description intent for small changes
-**Look at the tests in:** `tests/unit/`, `tests/invariant/`, `tests/golden/`
+**Look at the tests in:** `tests/unit/` (includes invariant tests during Tier-1) and `tests/golden/`
 If this feature touches scoring behavior, methodology, or data contracts, also check whether invariant tests and `tests/golden/` expectations still align with the relevant `docs/methodology/vX.md` and the `method_version` / “Intentional behavior change” rules in `CLAUDE.md`.
 
 Answer these questions:

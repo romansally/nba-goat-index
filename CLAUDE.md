@@ -1,42 +1,67 @@
 # CLAUDE.md — NBA GOAT Index Project Constitution
 
-> **This file is the single source of truth for all AI agents working on this project.**
-> When CLAUDE.md conflicts with any other document, CLAUDE.md wins.
-> Read PROJECT_WISDOM.md for the full rationale behind every rule here.
-> Canonical references always use repo paths; local download filenames (e.g., "CLAUDE (1).md") are non-authoritative.
+> **This file is the operational source of truth for all AI agents working on this project.**
+> Intent (what this project is, its scope, its data policy, its soul) is governed by
+> `docs/vision/NBA_GOAT_Index_Vision_and_Story.md` — the Vision doc. **Vision governs intent;
+> CLAUDE.md governs operations.** If this file ever contradicts the Vision on intent, the Vision
+> wins and this file must be updated (record the change in an ADR).
+> Re-pointing from the original Data-Engineering plan is recorded in
+> `docs/adr/0001-repoint-to-data-analyst-and-real-seed-data.md`.
 
 ## TL;DR (Paste This Into Any New AI Session)
 
-> This is the NBA GOAT Index project. Read CLAUDE.md (repo root) before writing any code.
-> Key rules: (1) Write `docs/methodology/v1.md` BEFORE scoring code. (2) No feature work without a PRD (micro/no-PRD allowed only for narrow cases in CLAUDE.md).
-> (3) `make check` must pass before any merge. (4) Never weaken tests to pass — fix source code.
-> (5) Golden snapshot artifacts under `tests/golden/` may change only with an explicit "Intentional behavior change" declaration AND a `method_version` bump. (6) Default `INGEST_MODE=offline`.
-> (7) Scoring methodology is versioned — every output includes `method_version` and `git_sha` when available.
-> (8) Builder and reviewer are different AI agents. Review with `prompts/review_codex.md`.
-> (9) If you can't explain a module in 2 minutes, simplify it.
-> Hierarchy: CLAUDE.md > docs/methodology/vX.md > docs/prd/* > docs/adr/* > PROJECT_WISDOM.md
-> AGENTS.md and prompts/ are helper docs — if they conflict with the above, defer to CLAUDE.md.
+> This is the NBA GOAT Index — a **Data Analyst portfolio project** that compares and ranks NBA
+> players using real, era-adjusted statistics. Read CLAUDE.md (repo root) before writing any code;
+> read docs/vision/NBA_GOAT_Index_Vision_and_Story.md before proposing any change of direction.
+> Key rules: (1) **Never lose the NBA soul** — real players, real stats, real basketball questions.
+> (2) Write `docs/methodology/v1.md` BEFORE scoring code. (3) **Real data is first-class**: the
+> committed seed dataset under `data/seed/` drives all analysis; synthetic rows exist only as test
+> fixtures that prove the guardrails catch errors. (4) `make check` must pass before any merge.
+> (5) Never weaken tests to pass — fix source code. (6) Golden snapshots under `tests/golden/`
+> change only with an explicit "Intentional behavior change" declaration AND a `method_version`
+> bump. (7) Every scoring output carries `method_version` and `git_sha`. (8) If a result looks
+> wrong, **fix the method, not the player** — players are never hand-placed. (9) If you can't
+> explain a module in 2 minutes to an interviewer, simplify it. (10) No banned overclaiming
+> language ("production-grade", "enterprise-scale", "real-time", "big data", "ML ranking model").
+> Hierarchy: Vision doc (intent) > CLAUDE.md (operations) > docs/methodology/vX.md > docs/prd/* >
+> docs/adr/* > Blueprint & PROJECT_WISDOM.md (context/rationale only).
 
 ---
 
 ## Identity
 
-- **Project:** NBA GOAT Index — a player comparison and ranking system
-- **Purpose:** Portfolio-grade Data Engineering / Analytics Engineering project
-- **Owner:** Solo developer using AI-assisted coding (Claude Code + Codex)
-- **Target roles:** Data Engineering, Analytics Engineering
+- **Project:** NBA GOAT Index — compares NBA players head-to-head and ranks the all-time greats
+  using real, era-adjusted statistics, with a transparent scoring method whose objective inputs
+  are cleanly separated from adjustable human weightings.
+- **Purpose:** Portfolio-grade **Data Analyst** project (analyst-friendly analytics-engineering
+  rigor welcome; the resume target is Data Analyst).
+- **Target roles:** Data Analyst, Entry/Junior DA, Reporting Analyst, BI Analyst, Business Data
+  Analyst, Data Operations Analyst.
+- **Owner:** Solo developer (~1–3 hrs/day) using AI-assisted coding.
+- **North star / failure mode:** "This project has gone in the wrong direction if an AI ever loses
+  the NBA soul of the project." Never sand this into a generic could-be-any-dataset exercise.
+- **Tie-breaker when priorities collide:** (a) Data Analyst resume value → (b) finishing a smaller
+  version completely → (c) keeping the future roadmap open (team builder, matchup simulator,
+  interactive app) → (d) breadth of skills shown.
 
 ---
 
-## Definitions (to prevent ambiguity)
+## Definitions
 
-- **PRD:** defines feature scope + acceptance criteria (“what” and “done”).
-- **ADR:** records a structural decision + tradeoffs (“why”), and must not replace PRDs or methodology.
-- **Behavior-changing scoring change:** any change that could alter scoring outputs for the same input dataset.
-- **Behavior-preserving refactor:** code rework intended to produce identical outputs for identical inputs.
-- **Golden snapshot artifacts:** committed expected outputs under `tests/golden/` keyed by `method_version` (e.g., `v1_scores.json`).
-- **Offline-first ingestion:** repo runs end-to-end on committed fixtures with no network required.
-- **Run metadata:** small JSON record of pipeline execution, committed under `results/run_metadata/`.
+- **Seed dataset:** the curated, committed REAL dataset under `data/seed/` (15–30 all-time greats,
+  player-season grain plus accolades), acquired via `nba_api` + documented hand-assembly. It is
+  the input to all analysis and reporting.
+- **Test fixtures:** small, designed synthetic rows under `tests/fixtures/` used ONLY to prove
+  correctness guardrails (contracts, invariants, golden snapshots). Never used for analysis.
+- **PRD:** defines scope + acceptance criteria ("what" and "done"). Tier-1 runs off one PRD.
+- **ADR:** records a structural decision + tradeoffs ("why").
+- **Behavior-changing scoring change:** any change that could alter scoring outputs for the same
+  input dataset.
+- **Golden snapshot artifacts:** committed expected outputs under `tests/golden/` keyed by
+  `method_version`, generated from the synthetic test fixtures (so expected values are
+  mechanically provable, not opinions about real players).
+- **Run metadata:** small JSON record of each pipeline execution, committed under
+  `results/run_metadata/`.
 
 ---
 
@@ -44,157 +69,200 @@
 
 ### 1. Methodology Before Code
 - `docs/methodology/v1.md` must exist and be complete BEFORE any scoring code is written.
-- Every scoring output must include `method_version` (e.g., `"v1"`) and `git_sha` when available in its metadata.
-- The scoring engine must have a single authoritative source of `method_version` (config or constant), and all outputs must echo it verbatim.
-- To change defined scoring behavior: write a new version doc (`v2.md`), add an ADR, update config — do not silently change the meaning of v1.
-- Edits to `v1.md` are allowed ONLY for typos/clarity that do not change defined behavior.
-- **Any change that could alter scoring outputs for the same input requires BOTH an ADR and a `method_version` bump. No exceptions.**
-- Behavior-preserving refactors are allowed without a version bump ONLY if golden snapshots remain identical and invariants still pass.
-- If unsure whether a change is behavior-preserving, treat it as behavior-changing (ADR + version bump).
+- The methodology implements the locked two-layer split from the Vision: an **objective layer**
+  (real inputs, era adjustments, decomposed component scores — reproducible) and a **weighting
+  layer** (explicit, config-driven, documented human judgment). Weights are chosen and documented,
+  not learned from data. Era adjustment is always-on — no toggle.
+- Every scoring output includes `method_version` (single authoritative source in config, echoed
+  verbatim) and `git_sha` when available.
+- To change defined scoring behavior: write `v2.md`, add an ADR, bump `method_version` in config.
+  Never silently change the meaning of v1. Edits to `v1.md` are allowed only for typos/clarity.
+- If unsure whether a change is behavior-preserving, treat it as behavior-changing.
+- **The iron rule:** if a result looks wrong, fix the method, not the player. Players are NEVER
+  hand-placed into rankings. Consensus lists (ESPN, The Ringer) are a sanity check via Spearman
+  correlation — reported honestly, never chased toward 1.0.
 
-### 2. Fixtures Before APIs
-- The synthetic fixture dataset (`tests/fixtures/synthetic_players.csv`) must exist BEFORE any real API ingestion code.
-- The ONLY canonical control for networked ingestion is `INGEST_MODE=offline|online` (default: offline). Any other phrasing is shorthand and must map to this.
-- Default mode is `INGEST_MODE=offline` — all pipelines run against committed fixtures.
-- CI and `make check` must succeed with `INGEST_MODE=offline` and without network access.
-- CI should run with network disabled or blocked (policy requirement; implementation may vary).
-- Online ingestion is allowed only when `INGEST_MODE=online` is explicitly set.
-- When `INGEST_MODE=online`, cache raw responses under `data/raw/` (gitignored) and update `docs/sources.md` for any new/changed source.
-- Real API data is never committed. Only synthetic/fixture data is committed.
+### 2. Real Data First (Seed Dataset Policy)
+- **Real NBA data is first-class from day one.** The analysis, rankings, report, and every
+  user-facing output run on the committed real seed dataset in `data/seed/`.
+- **Acquire once, commit as a versioned seed.** Acquisition (via `nba_api` plus documented
+  hand-assembly for accolades/patchy older stats) is a script that is re-runnable and documented
+  in `docs/sources.md` (endpoints, pull date, hand-assembled values and their sources). Live or
+  refreshable ingestion is a later phase.
+- **Network touches exactly one place:** the acquisition script, run explicitly and rarely.
+  Everything downstream (clean → validate → transform → score → report) reads committed files and
+  must run with no network access. `make run` and `make check` require no network.
+- **Raw API response dumps are gitignored** (`data/raw/`). The curated seed CSVs are committed.
+  Intermediate outputs (`data/processed/`, `data/marts/`) are gitignored and regenerable.
+- **Synthetic data survives only as test fixtures** (see Test Fixtures Design below). It never
+  feeds analysis, the report, or any ranking a human reads.
 
 ### 3. The Gate: `make check`
-- Every PR must pass `make check` before merge; `main` must always be green (CI passes).
-- CI must run the same gate as local (`make check`) and block merges on failure.
-- Run `make check` locally before opening/updating a PR; do not merge if it fails.
-- `make check` runs, in order: `ruff check` → `ruff format --check` → `mypy` → `pytest` → `make validate`
-- `make validate` runs Pandera contract validation against fixture data.
+- Every merge to `main` requires a passing `make check`, run locally. `main` is always green.
+- `make check` runs, in order: `ruff check` → `ruff format --check` → `pytest` → `make validate`.
+- `make validate` runs Pandera contract validation against the seed dataset (and confirms the
+  designed-bad fixtures still fail).
+- `mypy` and CI (GitHub Actions running the same gate) join in the post-Tier-1 operational
+  maturity phase — the gate's contents grow; the rule "no merge without a green gate" never
+  changes.
 - If `make check` fails, do not proceed. Fix first.
 
 ### 4. Test Integrity (Anti-Cheating)
 - **NEVER** modify existing tests to make failing code pass.
-- **NEVER** add `@pytest.mark.skip`, `@pytest.mark.xfail`, or weaken assertions.
-- **NEVER** delete tests or reduce coverage to pass CI.
-- **NEVER** broaden assertions to vacuous checks (e.g., `assert result is not None`).
+- **NEVER** add `@pytest.mark.skip` / `@pytest.mark.xfail`, weaken or broaden assertions
+  (e.g., to `assert result is not None`), delete tests, or reduce coverage to pass.
 - If a test fails, fix the SOURCE CODE, not the test.
-- Exception: if the test itself has a genuine bug, document the fix in the commit message.
+- Exception: a genuine bug in the test itself — document the fix in the commit message.
 
 ### 5. Golden Snapshot Guard
-- Golden snapshot artifacts are the files under `tests/golden/`, keyed by `method_version` (e.g., `v1_scores.json`).
-- Updating golden snapshot artifacts is allowed only with an explicit "Intentional behavior change" declaration AND a `method_version` bump.
-- CI fails if golden snapshots change alongside source code without a `method_version` increment.
-- To update golden snapshots: bump version in config → update `docs/methodology/` → regenerate → commit.
+- Golden snapshots live under `tests/golden/`, keyed by `method_version`, and are generated from
+  the synthetic test fixtures so expected values are mechanically provable.
+- They may change ONLY with an explicit "Intentional behavior change" declaration AND a
+  `method_version` bump (config bumped → methodology doc updated → regenerate → commit).
+- Golden snapshots changing alongside source code without a version bump is a blocked merge,
+  whether caught by CI (later) or by you (now).
 
 ### 6. Complexity Budget
-- No implementation file under `src/` or `tests/` exceeds 250 lines without documented justification in a comment at the top.
-- No abstraction unless used in 2+ places, or explicitly justified in the PRD/ADR.
-- No new dependency without a PRD or ADR justification.
+- No implementation file exceeds 250 lines without documented justification in a top-of-file
+  comment.
+- No abstraction unless used in 2+ places, or explicitly justified.
+- No new dependency without a one-line recorded justification (PRD, ADR, or commit message for
+  small utilities).
 - If you can't explain a module in 2 minutes to an interviewer, simplify it.
+- Do the simplest thing that works. No "for later" scaffolding.
 
-### 7. PRD Gate
-- No feature work begins without a PRD in docs/prd/<feature>.md (or a micro-PRD in the PR description for simple changes). No PRD is allowed only for formatting/typo/doc-only edits with no behavioral impact.
-- ADRs are required for structural decisions (new dependency, new storage format, pipeline architecture change, scoring framework/normalization approach), and must not replace PRDs or methodology.
-- Full PRD must include: objective, non-goals, files affected, data contracts impacted, acceptance criteria, required tests.
-- For cross-module features, PRD must list all modules touched.
-- If a change could alter scoring behavior, methodology outputs, or data contracts — it requires a Full PRD, no exceptions.
+### 7. Planning Gate (right-sized for a solo sprint)
+- **Tier-1 work runs off a single PRD:** `docs/prd/tier1_mvp.md`. Tasks in it need no additional
+  per-feature PRDs. Each post-Tier-1 phase gets one phase-level PRD before it starts.
+- **Out-of-plan changes:** a micro-PRD (3–5 lines in the PR/commit description: what, why, what
+  test verifies it) is enough for bug fixes, small refactors, and config changes. Formatting/typo/
+  doc-only edits need nothing beyond a clear commit message.
+- **The strict path still exists:** any change that could alter scoring behavior, methodology
+  outputs, or data contracts requires the full treatment — methodology doc update, ADR,
+  `method_version` bump where outputs change. No exceptions.
+- ADRs are required for structural decisions: new dependency of consequence, new storage format,
+  pipeline architecture change, scoring framework/normalization approach.
 
-### 8. Dual-Model Review
-- The AI that builds code is NOT the AI that reviews it.
-- Claude Code builds → Codex reviews (or vice versa).
-- Review uses the 4-Point Prompt (see below).
+### 8. Independent Review (scoped)
+- A second AI (Codex or ChatGPT) reviews diffs using `prompts/review_codex.md` (4-Point Prompt)
+  **whenever the diff touches scoring, contracts, or methodology** — the zones where a silent bug
+  poisons everything downstream.
+- For everything else, review is recommended when time allows, not required. A solo sprint at
+  1–3 hrs/day cannot afford mandatory ceremony on every diff.
+
+### 9. Attribution (No Tool Trailers)
+- Commit messages and PR descriptions must never include tool-attribution trailers:
+  no "Co-Authored-By: Claude …", no "Generated with Claude Code", no similar lines.
+- Commits are authored by Roman Sally. AI assistance is understood context; it is not
+  a co-author and must not appear in git history or PR bodies.
+
+### 10. Honest Claims (Overclaiming Ban)
+- Banned phrasing: "production-grade", "enterprise-scale", "architected a cloud backend",
+  "machine-learning ranking model", "real-time", "big data", "full-stack analytics platform".
+- Use: "built a reproducible analytics pipeline", "modeled validated player-season data",
+  "documented methodology and validation rules".
+- Claim only what a stranger could verify by cloning the repo and reading the README.
 
 ---
 
-## 4-Point Review Prompt (for Codex or any reviewer)
+## 4-Point Review Prompt (for any reviewer)
 
-When reviewing a diff, answer these four questions:
-
-1. **Does this diff satisfy the PRD acceptance criteria?** List each criterion and pass/fail.
+1. **Does this diff satisfy the acceptance criteria?** List each criterion, pass/fail.
 2. **What are the severe bugs?** List them first, before style issues.
 3. **Would the developer struggle to explain any part in an interview?** Flag it.
-4. **Propose tests that would FAIL if the code were wrong.** Not tests that pass trivially — tests that genuinely exercise correctness.
+4. **Propose tests that would FAIL if the code were wrong.** Not trivially-passing tests.
 
 ---
 
 ## Architecture Rules
 
 ### Rigor Zones
-- **High rigor** (strict types, full test coverage, golden snapshots): `src/scoring/`, `src/contracts/`, `src/pipeline/`, `docs/methodology/`
-- **Medium rigor** (tests, types, but lighter): `src/ingest/`, `src/api/`
-- **Low rigor initially** (functional, tested later): `app/` (UI), deployment configs
+- **High rigor** (contracts, invariants, golden snapshots, review required): scoring code, Pandera
+  contracts, the scoring SQL, `docs/methodology/`.
+- **Medium rigor** (validated, spot-tested): acquisition, cleaning, profiling, orchestration.
+- **Low rigor** (functional, iterated freely): report notebook/charts, README polish, `app/` (UI,
+  later phases).
 
 ### Data Flow
 ```
-fixtures/raw data → ingest → validate (contracts) → transform (dbt/SQL) → score (engine) → serve (API) → display (UI)
+nba_api + hand-assembly ──(acquisition script, explicit, network)──> data/seed/  [committed]
+data/seed/ → clean → profile → validate (Pandera) → transform (DuckDB SQL) → score (engine)
+          → results (ranking, pairwise, run metadata) → report/README (Tier-1) → dashboard (later)
 ```
 
 ### Key Directories
 ```
 nba-goat-index/
-├── CLAUDE.md                    # This file (constitution)
-├── AGENTS.md                    # AI agent roles and permissions
-├── PROJECT_WISDOM.md            # Accumulated insights and rationale
-├── Makefile                     # Single command: make check
+├── CLAUDE.md                    # This file (operational constitution)
+├── AGENTS.md                    # AI agent roles
+├── PROJECT_WISDOM.md            # Rationale archive (partly superseded — see its status note)
+├── Makefile                     # make check / make run / make validate
 ├── pyproject.toml               # uv project config
-├── .github/
-│   └── pull_request_template.md # PR checklist (enforces gates)
-├── prompts/
-│   ├── review_codex.md          # 4-Point Review Prompt (copy-paste)
-│   ├── plan_feature.md          # PRD creation prompt
-│   ├── test_pressure.md         # Test quality verification prompt
-│   └── simplify_refactor.md     # Complexity budget enforcement prompt
-├── src/
-│   ├── ingest/                  # API clients, data fetching
-│   ├── contracts/               # Pandera schemas, data contracts
-│   ├── scoring/                 # Scoring engine (high rigor zone)
-│   ├── pipeline/                # Pipeline orchestration
-│   └── api/                     # FastAPI endpoints
-├── tests/
-│   ├── fixtures/                # Synthetic player data (committed)
-│   ├── unit/                    # Unit tests
-│   ├── invariant/               # Property-based invariant tests
-│   └── golden/                  # Golden snapshot regression tests
-├── docs/
-│   ├── methodology/             # v1.md, v2.md, etc.
-│   ├── prd/
-│   │   └── template.md          # PRD template with checklist
-│   ├── adr/                     # Architecture Decision Records
-│   ├── sources.md               # Data source documentation + ToS
-│   └── data_dictionary.md       # Schema documentation
-├── dbt_project/                 # dbt models (added week 2-3)
-├── app/                         # Streamlit dashboard
+├── pipeline/                    # clean.py, profile.py, contracts.py, score.py, run.py,
+│                                # fetch_seed.py (only file that touches network)
+├── sql/                         # hand-written, commented DuckDB SQL (CTEs, window fns, ranking)
 ├── data/
-│   └── raw/                     # Raw online ingestion cache (gitignored)
-└── results/                     # Pipeline outputs (gitignored except results/run_metadata/)
+│   ├── seed/                    # committed REAL seed dataset (players, player_seasons, accolades)
+│   ├── raw/                     # raw API dumps (gitignored)
+│   ├── processed/               # cleaned parquet (gitignored, regenerable)
+│   └── marts/                   # scored/mart parquet (gitignored, regenerable)
+├── results/
+│   ├── goat_scores_v1.csv       # small committed final outputs
+│   └── run_metadata/            # committed run JSON records
+├── tests/
+│   ├── fixtures/                # synthetic guardrail fixtures (committed)
+│   ├── unit/                    # unit + invariant tests
+│   └── golden/                  # golden snapshots (version-guarded)
+├── qa/                          # validation_log.md
+├── docs/
+│   ├── vision/                  # Vision & Story (intent authority), Blueprint, ROI strategy
+│   ├── methodology/             # v1.md, v2.md, ...
+│   ├── prd/                     # tier1_mvp.md, template.md, phase PRDs
+│   ├── adr/                     # decision records
+│   ├── sources.md               # data sources, ToS, pull dates, hand-assembled values
+│   ├── data_dictionary.md       # schema documentation
+│   ├── questions.md             # the analytical questions the report answers
+│   ├── data_model.md            # star schema + grain/keys
+│   └── report.md                # the question-driven analyst report
+├── dbt_project/                 # POST-Tier-1 (Phase 2)
+└── app/                         # POST-Tier-1 Streamlit dashboard (Phase 3)
 ```
 
 ---
 
 ## Stack Policy (Approved Set)
 
-### Core (Week 1-2)
-Python 3.12+ · SQL · DuckDB · Parquet · pytest · Pandera · ruff · mypy · GitHub Actions · Makefile · uv · nba_api · pre-commit
+### Tier-1 core (now)
+Python 3.12+ · pandas · SQL · DuckDB · Parquet · Pandera · pytest · ruff · Makefile · uv ·
+nba_api (acquisition only) · matplotlib/plotly (report charts)
 
-### Resume-Optimal (Week 3-5)
-Add: dbt Core (dbt-duckdb → dbt-postgres) · PostgreSQL via Neon free tier · FastAPI · Streamlit · Docker · structlog
+### Post-Tier-1 analyst arc (in phase order, per the Blueprint)
+dbt Core (dbt-duckdb first) → cloud warehouse (PostgreSQL/Neon, then BigQuery) → Streamlit
+dashboard (+ optional Power BI over the hosted DB) → operational maturity (GitHub Actions CI,
+pre-commit, mypy, sqlfluff, structlog, expanded tests) → advanced analyst layer (weight
+sensitivity, bootstrap stability).
 
-### Deferred (only when pain appears)
-Dagster (when Makefile > 15 targets) · BigQuery free tier (when job requires it) · Great Expectations (when 50+ checks) · Next.js/TypeScript (when targeting data product roles, month 3+)
+### Optional / last (engineering signal — only if targeting BI-developer/AE roles)
+FastAPI · Docker
 
 ### Explicitly Not Used
-Airflow · Spark · Kafka · Kubernetes · Terraform · Snowflake/Databricks · MLflow · Multiple quality frameworks
+Airflow · Spark · Kafka · Kubernetes · Terraform · Snowflake/Databricks · MLflow · learned/ML
+weights (deferred indefinitely per Vision §3) · React/Next.js (far-future app phase only)
 
 ---
 
 ## Scoring Engine Invariants
 
-These properties must ALWAYS hold. Test them in `tests/invariant/`:
+These properties must ALWAYS hold. Test them (in `tests/unit/` for Tier-1):
 
 1. **Determinism:** Same input → same output, every run.
 2. **Score bounds:** All final scores fall within [0, 100].
 3. **Weight sum:** Category weights sum to exactly 1.0.
 4. **No NaN:** No NaN values in any final score output.
-5. **Component monotonicity:** Increasing a positively-weighted metric increases that component's score (NOT global score — global monotonicity fails under normalization).
-6. **Version tags:** Every output contains `method_version` matching the config, and `git_sha` when available.
+5. **Component monotonicity:** Increasing a positively-weighted metric increases that component's
+   score (NOT global score — global monotonicity fails under normalization).
+6. **Version tags:** Every output contains `method_version` matching config, and `git_sha` when
+   available.
 
 ---
 
@@ -203,108 +271,74 @@ These properties must ALWAYS hold. Test them in `tests/invariant/`:
 ### Era-Conditional Rules
 - `three_pt_pct`: non-null only for seasons >= 1979-80 (3-point line introduced)
 - `blocks`, `steals`: non-null only for seasons >= 1973-74
+- Turnovers: tracked from 1977-78
 - Advanced stats (PER, WS, BPM): availability varies by source and era
+- Impact metrics: on/off and plus-minus exist only from ~1996-97 — the Winning/Impact component
+  must use an all-era-available proxy (see Vision §5)
 - Document all era boundaries in `docs/data_dictionary.md`
 
 ### Contract Enforcement
-- Contracts live in `src/contracts/`
-- `make validate` runs all contracts against fixture data
-- Contracts are SEPARATE from tests — contracts validate data shape, tests validate logic
+- Contracts live in `pipeline/contracts.py`; `make validate` runs them against the seed dataset.
+- Contracts validate data shape; tests validate logic. Both must pass in `make check`.
+- The designed-bad synthetic fixtures must FAIL validation — a test asserts that they do. If a
+  bad fixture ever passes, the contract has a hole.
 
 ---
 
-## Synthetic Fixtures Design
+## Test Fixtures Design (synthetic, guardrails only)
 
-- Use PlayerA, PlayerB, ..., PlayerH — NOT real player names
-- 8 players, 4 eras, covering edge cases:
-  - Short career (3 seasons)
-  - Multi-era span
-  - Missing stats (pre-3pt era)
-  - Lockout-shortened season
-  - Dominant in one category, weak in others
-- Expected ordering is mechanically provable from the methodology, not subjective opinion
-- Committed to `tests/fixtures/synthetic_players.csv`
+Synthetic rows exist to make correctness mechanically provable — never to stand in for real data.
 
----
-
-## Daily Workflow Loop
-
-1. **Determine planning level:** Complex / Standard / Simple / Trivial (see Planning Protocols below).
-2. **PRD Gate:** Write `docs/prd/<feature>.md` (Full PRD) or micro-PRD in PR description, based on planning level.
-3. **Branch:** `git checkout -b feat/<n>`
-4. **`/clear`** Claude Code if a planning session preceded this (start implementation clean).
-5. **Plan Mode:** Shift+Tab before first file edit (skip for trivial changes).
-6. **Build:** Claude Code implements against PRD.
-7. **Verify:** Run `make check`. Fix all failures.
-8. **Review:** Codex reviews diff using `prompts/review_codex.md`.
-9. **Explain:** Write 5-8 sentence self-explanation (interview prep).
-10. **Merge:** Only when checks pass AND PRD criteria satisfied.
-
----
-
-## Planning Protocols (Claude Code)
-
-### Plan Mode (Shift+Tab)
-Use Plan Mode before implementation if ANY of these are true:
-- Change touches 2+ files
-- Adds or changes a public interface (function signature, API contract, schema)
-- Adds a new module or package
-- Changes methodology, contracts, or scoring logic
-
-Skip Plan Mode if:
-- Single-file trivial change (typo, rename, small refactor)
-- Pure documentation edit
-- Formatting-only change
-
-### Interrogation Mode (AskUserQuestion)
-Use AskUserQuestion to interview the user when working on:
-- Writing or updating `docs/methodology/vX.md`
-- Designing a new data model, table grain, or schema
-- Adding a new scoring component or normalization approach
-- Any PRD where the user says "I'm not sure about the approach"
-
-Do NOT use interrogation for:
-- Implementing a feature with a complete PRD
-- Adding tests for existing code
-- Creating Pandera schemas from a defined contract
-- Bug fixes or config changes
-
-### Context Hygiene
-- After any planning or exploration session, the user should `/clear` before implementation begins.
-- Start every implementation session by reading CLAUDE.md and the relevant PRD. Nothing else.
-- Do not carry planning conversation into implementation — start clean.
-
-### PRD Levels
-- **Full PRD** (new feature, new module, scoring changes): Complete `docs/prd/<feature>.md` using template.
-- **Micro-PRD** (bug fix, small refactor, config change): 5-line intent note in the PR description. Must include: what changed, why, and what test verifies it.
-- **No PRD** (formatting/typo/doc-only edits with no behavioral impact): Just commit with a clear message.
-
-Rule: If a change could alter scoring behavior, methodology outputs, or data contracts — it requires a Full PRD, no exceptions.
+- **Valid mini-set** (PlayerA, PlayerB, … — synthetic names so expected ordering is a mathematical
+  consequence of the methodology, not an opinion): drives golden snapshots, determinism, and
+  invariant tests. Cover edge cases: short career, pre-3PT-era seasons, multi-era span,
+  lockout-shortened season, dominant-in-one-category profile.
+- **Designed-bad rows** that MUST trip the contracts, e.g.: score out of [0, 100] bounds,
+  duplicate player-season key, missing required key, impossible-for-era stat (3PT attempts in
+  1965), negative games played.
+- Committed under `tests/fixtures/`. Real player names never appear in fixtures; synthetic rows
+  never appear in `data/seed/` or any analysis output.
 
 ---
 
 ## Run Metadata (Observability Without Infra)
 
-Every pipeline run produces a JSON metadata file under `results/run_metadata/`:
+Every pipeline run writes a JSON file under `results/run_metadata/`:
 ```json
 {
   "method_version": "v1",
   "git_sha": "abc123",
-  "timestamp": "2026-02-16T14:00:00Z",
+  "timestamp": "2026-07-04T14:00:00Z",
   "row_count": 450,
   "validation_passed": true,
   "runtime_seconds": 12.4,
-  "input_source": "offline_fixtures"
+  "input_source": "data/seed"
 }
 ```
 
 ---
 
+## Workflow (solo cadence)
+
+1. Pick the next task from `docs/prd/tier1_mvp.md` (or the current phase PRD).
+2. Branch: `git checkout -b feat/<name>`. Batching several related PRD tasks per branch is fine.
+3. Plan Mode (Shift+Tab) before edits that touch 2+ files or any public interface/schema/scoring
+   logic; skip for trivial changes. Use AskUserQuestion interviews only for high-stakes design
+   (methodology, data model, new scoring component). `/clear` between planning and implementation.
+4. Build against the PRD task's acceptance criteria.
+5. Run `make check`. Fix all failures.
+6. If the diff touched scoring/contracts/methodology → independent review with
+   `prompts/review_codex.md`.
+7. Write a 5–8 sentence self-explanation (interview prep) for non-trivial work.
+8. Merge when the gate is green and the task's acceptance criteria are met.
+9. **Daily minimum:** one concrete artifact per session — one SQL file, one validation rule, one
+   chart, one doc section. Layered projects die from stalling, not difficulty.
+
+---
+
 ## Git Policy
 
-- Feature branches for all work
-- `main` is always green (CI passes)
-- Real data: gitignored
-- Synthetic fixtures: committed
-- Golden snapshots: committed, protected by version guard
-- Run metadata: committed under `results/run_metadata/` (small JSON files); all other `results/` outputs are gitignored
+- Feature branches for all work; `main` always passes `make check`.
+- Committed: seed dataset (`data/seed/`), test fixtures, golden snapshots (version-guarded),
+  run metadata, small final result CSVs, screenshots.
+- Gitignored: `data/raw/`, `data/processed/`, `data/marts/`, virtualenvs.
