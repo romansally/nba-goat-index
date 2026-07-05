@@ -1,5 +1,17 @@
 # PROJECT_WISDOM.md — Accumulated Insights for NBA GOAT Index
 
+> **⚠️ STATUS NOTE (2026-07-04):** This file predates the project's re-point from a
+> Data-Engineering plan to the current **Data Analyst / real-data-first** direction
+> (see `docs/vision/NBA_GOAT_Index_Vision_and_Story.md` and
+> `docs/adr/0001-repoint-to-data-analyst-and-real-seed-data.md`). It remains a valuable
+> rationale archive, but the following parts are **superseded**: §1.3 and §2.2
+> (synthetic-first / `INGEST_MODE` offline-default — replaced by the committed real seed
+> dataset policy; synthetic rows survive only as guardrail test fixtures), Part 5 resume
+> phrasing/keywords (DE-flavored; FastAPI/Docker/CI are now optional/late), Part 7 sequencing
+> (replaced by `docs/prd/tier1_mvp.md` + the Blueprint phases), Part 8 item 2 and the final
+> Appendix quote ("Real data gitignored… Always" — now false for the curated seed). The
+> testing, review, complexity-budget, and anti-bloat insights all still stand.
+
 > **Purpose:** This document captures every valuable insight, principle, and design decision
 > from the multi-round planning process (Claude Opus + ChatGPT cross-validation).
 > Any AI agent working on this project should read this file to understand the *why*

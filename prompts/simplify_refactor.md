@@ -9,7 +9,7 @@ I need you to review the following code for unnecessary complexity.
 
 **Read `CLAUDE.md` first** — specifically the Complexity Budget rules.
 
-If the target code is in `src/scoring/`, `src/contracts/`, or `src/pipeline/`, preserve the high-rigor expectations in `CLAUDE.md` while simplifying. If the simplification touches methodology-coupled behavior, also review the relevant PRD and `docs/methodology/vX.md` before recommending it.
+If the target code is in a high-rigor zone per `CLAUDE.md` (scoring code, Pandera contracts, scoring SQL, methodology), preserve those high-rigor expectations while simplifying. If the simplification touches methodology-coupled behavior, also review the relevant PRD and `docs/methodology/vX.md` before recommending it.
 
 Review the code in `[file or module path]` and answer these questions:
 
@@ -28,7 +28,7 @@ Review the code in `[file or module path]` and answer these questions:
 - Are there any dependencies that were added "for later" but aren't used yet?
 
 ## 4. Line Count Check
-- Are any implementation files under `src/` or `tests/` over 250 lines? If so, is the length explicitly justified in a comment at the top of the file, per `CLAUDE.md`, or should it be split?
+- Are any implementation files (e.g., under `pipeline/` or `tests/`) over 250 lines? If so, is the length explicitly justified in a comment at the top of the file, per `CLAUDE.md`, or should it be split?
 
 ## 5. Proposed Simplifications
 For each issue found, propose a specific simplification:

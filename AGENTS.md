@@ -1,6 +1,9 @@
 # AGENTS.md — AI Agent Roles & Permissions
 
 > **Read CLAUDE.md first.** When CLAUDE.md conflicts with this file, CLAUDE.md wins.
+> Project intent (scope, data policy, direction) is governed by
+> `docs/vision/NBA_GOAT_Index_Vision_and_Story.md` — no agent may propose direction changes that
+> conflict with it. This is a **Data Analyst** portfolio project; keep the NBA soul.
 
 ---
 
@@ -8,75 +11,55 @@
 
 ### Claude Code (Primary Builder)
 - **Role:** Implementation. Writes code, runs tests, creates files.
-- **Reads:** CLAUDE.md (auto), PROJECT_WISDOM.md (on first session), relevant PRD
-- **Permissions:** May read/write repo files as needed (including `docs/`, `.github/`, and `prompts/`); high-rigor rules apply in the scoring/contracts/pipeline zones per CLAUDE.md.
+- **Reads at session start:** CLAUDE.md (auto) + the current PRD (`docs/prd/tier1_mvp.md` during
+  Tier-1). Read the Vision doc before any scope/direction discussion.
+- **Permissions:** May read/write repo files as needed; high-rigor rules apply to scoring,
+  contracts, and methodology per CLAUDE.md.
 - **Restrictions:**
-  - Must run `make check` frequently; at minimum before opening/updating a PR and before merge.
-  - Must NOT modify existing tests to make code pass (fix source code instead)
-  - Must NOT add dependencies without PRD/ADR justification
-  - Must respect the 250-line file limit unless justified per CLAUDE.md (documented justification + PRD/ADR where applicable).
-  - Offline-first is mandatory: default `INGEST_MODE=offline`. Online ingestion is allowed only when `INGEST_MODE=online` is explicitly set, with raw caching under `data/raw/` (gitignored) and `docs/sources.md` updated. Otherwise, no network calls are allowed in ingest/pipeline code paths.
-- **On first session:** Read CLAUDE.md and PROJECT_WISDOM.md before writing any code
+  - Run `make check` before merging; never merge red.
+  - NEVER modify existing tests to make code pass (fix source code instead).
+  - No new dependency without a recorded one-line justification (PRD, ADR, or commit message).
+  - Respect the 250-line file limit unless justified per CLAUDE.md.
+  - **Network only in the acquisition script** (`pipeline/fetch_seed.py`), run explicitly. All
+    other pipeline code reads committed files (`data/seed/`, fixtures). Raw API dumps go to
+    `data/raw/` (gitignored); curated seed CSVs are committed; `docs/sources.md` updated on any
+    re-pull.
+  - Synthetic fixture data never feeds analysis outputs; real seed data never appears in
+    `tests/fixtures/`.
 
-### Codex (Independent Reviewer)
-- **Role:** Code review. Evaluates diffs against PRDs using the 4-Point Prompt.
-- **Reads:** CLAUDE.md, the relevant PRD, the diff
-- **Does NOT:** Write implementation code, modify tests, or change repo files
-- **Review prompt:**
-  1. Does this diff satisfy each PRD acceptance criterion?
-  2. What are the severe bugs? (list first)
-  3. Flag anything the developer would struggle to explain in an interview.
-  4. Propose tests that would FAIL if the code were wrong.
+### Codex / ChatGPT (Independent Reviewer)
+- **Role:** Reviews diffs with the 4-Point Prompt (`prompts/review_codex.md`).
+- **Required for:** any diff touching scoring, contracts, or methodology.
+- **Optional for:** everything else (solo-sprint right-sizing; see ADR-0001).
+- **Does NOT:** write implementation code, modify tests, or change repo files.
 
-### ChatGPT (Checkpoint Auditor & Architect)
-- **Role:** Architecture review, strategy decisions, progress validation
-- **Use for:** PRD review, methodology review, stack decisions, "should I add X?" questions
-- **Does NOT:** Write implementation code directly
-- **Strength:** Cross-referencing, finding gaps in plans, industry context
-
-### Claude Chat (This Interface)
-- **Role:** Deep analysis, planning, document creation
-- **Use for:** Creating governance docs, analyzing approaches, writing methodology
-- **Feed context:** Paste CLAUDE.md + PROJECT_WISDOM.md at session start, or upload them
+### ChatGPT / Claude Chat (Architect & Auditor)
+- **Role:** Architecture review, strategy decisions, PRD/methodology review, "should I add X?"
+- **Feed context:** CLAUDE.md + the Vision doc (+ the relevant PRD). PROJECT_WISDOM.md is
+  background rationale only — its DE-era guidance is partly superseded (see its status note).
+- **Does NOT:** write implementation code directly.
 
 ---
 
 ## Context Feeding Protocol
 
-### Starting a New Claude Code Session
-Claude Code automatically reads CLAUDE.md from repo root. No action needed for the constitution.
-For full context, at session start say:
-> "Read PROJECT_WISDOM.md before starting any work."
-
-### Starting a New ChatGPT Session
-Paste or upload these files at the start of the conversation:
-1. CLAUDE.md (required — constitution)
-2. PROJECT_WISDOM.md (required — rationale and insights)
-3. The specific PRD you're working on (if applicable)
-
-### Starting a New Claude Chat Session
-Same as ChatGPT. Upload or paste CLAUDE.md + PROJECT_WISDOM.md.
-If the conversation is about a specific feature, also include the PRD.
-
-### Starting a Codex Review Session
-Provide:
-1. Copy-paste `prompts/review_codex.md` as the prompt
-2. The git diff
-3. The PRD for the feature being reviewed
-4. The `make check` output
-
-### Submitting a PR
-Use `.github/pull_request_template.md` — it enforces all gates as a checklist.
-Every PR must answer: "What is the single easiest way this could be wrong, and what test would fail?"
+- **New Claude Code session:** CLAUDE.md is read automatically. Say which PRD task you're on.
+- **New ChatGPT / Claude Chat session:** paste or upload CLAUDE.md + the Vision doc, plus the
+  current PRD if working a specific task.
+- **Codex review session:** provide `prompts/review_codex.md`, the diff, the relevant PRD task's
+  acceptance criteria, and the `make check` output.
+- **PR:** use `.github/pull_request_template.md`. Every PR answers: "What is the single easiest
+  way this could be wrong, and what test would fail?"
 
 ---
 
 ## Keeping Context Current
 
 When you make a significant decision during development:
-1. If it's a rule change → update CLAUDE.md
-2. If it's a new insight or rationale → add to PROJECT_WISDOM.md
-3. If it's an architectural decision → write an ADR in `docs/adr/`
-4. If it changes agent behavior → update this file (AGENTS.md)
+1. Rule/process change → update CLAUDE.md (and record why in an ADR if structural)
+2. Architectural/structural decision → ADR in `docs/adr/`
+3. Scoring behavior change → methodology doc + ADR + `method_version` bump (no exceptions)
+4. Agent behavior change → update this file
+5. New insight/rationale → PROJECT_WISDOM.md
 
 The files ARE the memory. Keep them updated, and every new session starts informed.

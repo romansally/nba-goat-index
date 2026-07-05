@@ -46,6 +46,12 @@ Never start a phase until the previous one is committed and its README section i
 
 ## 3. PHASE 1 — MVP Core (the resume-critical, finishable slice)
 
+> **Update (2026-07-04, per Vision §7/§12 and ADR-0001):** Phase 1 runs on the **committed real
+> seed dataset** (`data/seed/`, acquired once via nba_api + documented hand-assembly), not on
+> synthetic fixtures — still deterministic and offline, because the seed is committed. Synthetic
+> rows survive only as guardrail test fixtures. The operative Phase-1/Tier-1 task list is
+> `docs/prd/tier1_mvp.md`. Phase ordering below otherwise stands.
+
 Runs **entirely on committed synthetic fixtures** — deterministic, offline, no API flakiness. This is the "narrow implemented slice" that already stands as a serious portfolio piece even if you never build the later phases.
 
 ### 3.1 Skills included and why (each = a resume-visible artifact)

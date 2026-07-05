@@ -10,7 +10,7 @@ I'm about to start work on a change for the NBA GOAT Index project.
 
 **Read CLAUDE.md first** (it's in the repo root).
 
-First, state which planning level applies under `CLAUDE.md` (Complex / Standard / Simple / Trivial) and why.
+First, state which planning path applies under `CLAUDE.md`'s Planning Gate (already covered by the current phase PRD / new Full or phase PRD / micro-PRD / no PRD) and why. During Tier-1, tasks listed in `docs/prd/tier1_mvp.md` are already planned — no new PRD needed.
 
 If `CLAUDE.md` routes this change to a Full PRD, use `docs/prd/template.md` as the structure for the planning artifact and complete each section according to the template instructions. Do not invent a reduced PRD schema here.
 

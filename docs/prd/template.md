@@ -9,7 +9,7 @@
 
 ## Pre-Implementation Checklist
 
-- [ ] Planning level determined: Complex / Standard / Simple / Trivial
+- [ ] Planning path determined per CLAUDE.md Planning Gate (phase PRD task / Full PRD / micro-PRD / none)
 - [ ] If required by CLAUDE.md (e.g., methodology/model/scoring design uncertainty): AskUserQuestion/interrogation session completed
 - [ ] Planning session `/clear`ed before implementation begins
 - [ ] Plan Mode used when required by CLAUDE.md (skip allowed for trivial/doc/format-only changes)

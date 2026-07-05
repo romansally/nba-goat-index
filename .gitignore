@@ -9,3 +9,8 @@ wheels/
 # Virtual environments
 .venv/
 .DS_Store
+
+# Data policy (CLAUDE.md Rule 2): raw dumps and regenerable intermediates stay out of git
+data/raw/
+data/processed/
+data/marts/
