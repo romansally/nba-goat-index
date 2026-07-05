@@ -150,7 +150,13 @@
 - For everything else, review is recommended when time allows, not required. A solo sprint at
   1–3 hrs/day cannot afford mandatory ceremony on every diff.
 
-### 9. Honest Claims (Overclaiming Ban)
+### 9. Attribution (No Tool Trailers)
+- Commit messages and PR descriptions must never include tool-attribution trailers:
+  no "Co-Authored-By: Claude …", no "Generated with Claude Code", no similar lines.
+- Commits are authored by Roman Sally. AI assistance is understood context; it is not
+  a co-author and must not appear in git history or PR bodies.
+
+### 10. Honest Claims (Overclaiming Ban)
 - Banned phrasing: "production-grade", "enterprise-scale", "architected a cloud backend",
   "machine-learning ranking model", "real-time", "big data", "full-stack analytics platform".
 - Use: "built a reproducible analytics pipeline", "modeled validated player-season data",
