@@ -74,7 +74,10 @@ SCHEMAS: dict[str, dict[str, str]] = {
 TABLE_KEYS = {
     "players": ["player_id"],
     "player_seasons": ["player_id", "season"],
-    "accolades": ["player_id", "season", "award", "all_nba_team"],
+    # A player can win each award at most once per season, so all_nba_team is
+    # not part of the grain (the looser 4-column key would have admitted
+    # All-NBA 1st + 2nd in the same season — a basketball impossibility).
+    "accolades": ["player_id", "season", "award"],
     "league_seasons": ["season"],
 }
 

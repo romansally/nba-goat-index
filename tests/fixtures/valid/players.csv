@@ -1,0 +1,4 @@
+player_id,player_name,first_season,last_season,is_active
+1,PlayerA,1990,2001,False
+2,PlayerB,1970,1971,False
+3,PlayerC,1999,2000,False

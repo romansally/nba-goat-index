@@ -1,0 +1,9 @@
+player_id,season,award,all_nba_team,violation
+2,1971,dpoy,,award_after_intro
+1,2000,sixth_man,,award_known
+1,1990,mvp,1,all_nba_team_null_iff
+1,1990,all_nba,,all_nba_team_null_iff
+2,1970,all_nba,3,third_team_intro
+3,1990,mvp,,accolade_joins_played_season
+3,1999,all_star,,all_star_requires_asg
+1,2001,mvp,,accolade_key_unique

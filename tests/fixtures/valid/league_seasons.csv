@@ -1,0 +1,7 @@
+season,lg_pts_pg,lg_trb_pg,lg_ast_pg,lg_ts_pct,season_games,asg_held,pace,pace_estimated
+1970,112.0,56.0,24.0,0.5,80,True,120.0,True
+1971,112.0,56.0,24.0,0.5,80,True,120.0,True
+1990,100.0,40.0,20.0,0.5,82,True,100.0,False
+1999,90.0,42.0,21.0,0.5,50,False,90.0,False
+2000,90.0,42.0,21.0,0.5,82,True,90.0,False
+2001,90.0,42.0,21.0,0.5,82,True,90.0,False

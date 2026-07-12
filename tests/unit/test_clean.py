@@ -153,6 +153,18 @@ class TestKeysAndReferences:
         with pytest.raises(ValueError, match="missing from league_seasons"):
             check_referential(frames)
 
+    def test_all_nba_first_and_second_same_season_fails(self):
+        # (player_id, season, award) is the accolade grain: a differing
+        # all_nba_team value must not disambiguate an impossible double win.
+        rows = pd.DataFrame(
+            [
+                {"player_id": 1, "season": 1991, "award": "all_nba", "all_nba_team": 1},
+                {"player_id": 1, "season": 1991, "award": "all_nba", "all_nba_team": 2},
+            ]
+        )
+        with pytest.raises(ValueError, match="duplicate"):
+            check_unique_key("accolades", apply_schema("accolades", rows))
+
 
 class TestNameConsistency:
     def hand_ws(self, name: str) -> pd.DataFrame:

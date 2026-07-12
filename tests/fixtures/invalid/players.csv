@@ -1,0 +1,5 @@
+player_id,player_name,first_season,last_season,is_active,violation
+9,PlayerX,2005,2001,False,span_order
+3,PlayerC,1999,2000,False,players_key_unique
+3,PlayerC,1998,2000,False,players_span_matches_seasons
+9,PlayerX,1999,2000,False,players_have_seasons

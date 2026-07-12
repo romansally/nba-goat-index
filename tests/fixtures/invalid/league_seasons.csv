@@ -1,0 +1,5 @@
+season,lg_pts_pg,lg_trb_pg,lg_ast_pg,lg_ts_pct,season_games,asg_held,pace,pace_estimated,violation
+2002,90.0,42.0,21.0,0.5,82,True,200.0,False,pace_range
+2003,90.0,42.0,21.0,0.5,90,True,90.0,False,season_games_range
+1972,112.0,56.0,24.0,0.5,80,True,120.0,False,pace_estimated_iff_pre1978
+2000,90.0,42.0,21.0,0.5,82,True,90.0,False,league_key_unique
