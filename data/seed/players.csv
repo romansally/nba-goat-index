@@ -1,0 +1,21 @@
+player_id,player_name,first_season,last_season,is_active
+165,Hakeem Olajuwon,1985,2002,False
+406,Shaquille O'Neal,1993,2011,False
+708,Kevin Garnett,1996,2016,False
+893,Michael Jordan,1985,2003,False
+977,Kobe Bryant,1997,2016,False
+1449,Larry Bird,1980,1992,False
+1495,Tim Duncan,1998,2016,False
+1717,Dirk Nowitzki,1999,2019,False
+2544,LeBron James,2004,2026,True
+76003,Kareem Abdul-Jabbar,1970,1989,False
+76375,Wilt Chamberlain,1960,1973,False
+77142,Magic Johnson,1980,1996,False
+77449,Moses Malone,1977,1995,False
+78049,Bill Russell,1957,1969,False
+78497,Jerry West,1961,1974,False
+201142,Kevin Durant,2008,2026,True
+201939,Stephen Curry,2010,2026,True
+203507,Giannis Antetokounmpo,2014,2026,True
+203999,Nikola Jokić,2016,2026,True
+600015,Oscar Robertson,1961,1974,False

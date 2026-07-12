@@ -11,8 +11,9 @@
 ## Pre-Implementation Checklist
 
 - [x] Planning level determined: Complex (whole-phase plan) — this PRD is the planning artifact
-- [ ] Interrogation session for `docs/methodology/v1.md` (required before task T2 — CLAUDE.md
-      routes methodology design through an AskUserQuestion interview)
+- [x] Interrogation session for `docs/methodology/v1.md` (required before task T2 — CLAUDE.md
+      routes methodology design through an AskUserQuestion interview) — held 2026-07-05; nine
+      decisions recorded in `docs/methodology/v1.md` §12
 - [ ] `/clear` between this planning session and the first implementation session
 - [ ] Plan Mode for multi-file tasks (T3 onward)
 

@@ -1,0 +1,54 @@
+# NBA GOAT Index — scoring configuration (authoritative source of method_version)
+#
+# Two kinds of values live here (docs/methodology/v1.md §8):
+#   - `weights:` is the WEIGHTING LAYER — the Custom Mode surface. Swap freely; must sum to 1.0.
+#   - Everything else is an OBJECTIVE-LAYER parameter. Changing one is a behavior-changing
+#     scoring change: it requires methodology v2 + ADR + method_version bump (CLAUDE.md Rule 1).
+
+method_version: "v1"
+
+scope: career # career | peak (docs/methodology/v1.md §7)
+peak_n: 5
+peak_min_avail: 0.5 # season qualifies for the peak window if GP / season_games >= this
+
+weights: # must sum to exactly 1.0 — engine errors, never renormalizes
+  peak: 0.25
+  winning_impact: 0.20
+  playoff: 0.18
+  accolades: 0.15
+  efficiency: 0.12
+  longevity: 0.10
+
+production_blend: # SPI = sum of REL_stat * blend (v1.md §4); must sum to 1.0
+  pts: 0.50
+  trb: 0.25
+  ast: 0.25
+
+winning_impact_blend: # v1.md §5.3, reasoning §12.3; must sum to 1.0
+  ws48: 0.50
+  team_srs: 0.50
+
+efficiency_blend: # v1.md §5.6; must sum to 1.0
+  ts_rel: 0.50
+  spi_career: 0.50
+
+accolade_weights: # v1.md §5.5; must sum to 1.0; renormalized over a player's eligible awards
+  mvp: 0.30
+  ring: 0.25
+  finals_mvp: 0.15
+  all_nba: 0.15
+  dpoy: 0.075
+  all_star: 0.075
+
+all_nba_team_points:
+  first: 1.0
+  second: 0.5
+  third: 0.25
+
+accolade_intro_season: # first season each award existed (season = end-year, v1.md §2)
+  mvp: 1956
+  ring: 1947
+  finals_mvp: 1969
+  all_nba: 1947
+  dpoy: 1983
+  all_star: 1951 # seasons with no ASG held (1999) excluded via league_seasons.asg_held
