@@ -847,6 +847,13 @@ def test_all_nba_points_domain(points):
             {"pts": float("nan"), "trb": 0.5, "ast": 0.5},
             "production_blend",
         ),
+        (
+            # sum 1.0000000005: passed the old 1e-9 tolerance and shifted a
+            # fixture final by 1.8e-8 (Codex T7 re-review) — 1e-12 rejects it
+            ("production_blend",),
+            {"pts": 0.5000000005, "trb": 0.25, "ast": 0.25},
+            "production_blend",
+        ),
         (("accolade_intro_season", "dpoy"), 1990, "accolade_intro_season"),
     ],
 )

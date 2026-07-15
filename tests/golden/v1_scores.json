@@ -1,0 +1,91 @@
+{
+  "config_sha256": "ce94d6514e76b736ecee909198c252e2a5803ba28f6aaa675158537d31317b37",
+  "method_version": "v1",
+  "scopes": {
+    "career": [
+      {
+        "components": {
+          "accolades": 52.7027027027027,
+          "efficiency": 50.0,
+          "longevity": 49.45054945054947,
+          "peak": 100.0,
+          "playoff": 45.09018036072144,
+          "winning_impact": 28.086419753086467
+        },
+        "goat_score": 57.5839767660075,
+        "player_id": 2,
+        "player_name": "PlayerB",
+        "rank": 1
+      },
+      {
+        "components": {
+          "accolades": 52.5,
+          "efficiency": 31.24999999999999,
+          "longevity": 100.0,
+          "peak": 0.0,
+          "playoff": 100.0,
+          "winning_impact": 50.0
+        },
+        "goat_score": 49.625,
+        "player_id": 1,
+        "player_name": "PlayerA",
+        "rank": 2
+      },
+      {
+        "components": {
+          "accolades": 37.5,
+          "efficiency": 81.2404287901991,
+          "longevity": 0.0,
+          "peak": 62.499999999999986,
+          "playoff": 0.0,
+          "winning_impact": 71.42857142857143
+        },
+        "goat_score": 45.28456574053818,
+        "player_id": 3,
+        "player_name": "PlayerC",
+        "rank": 3
+      }
+    ],
+    "peak": [
+      {
+        "components": {
+          "accolades": 52.7027027027027,
+          "efficiency": 50.0,
+          "peak": 100.0,
+          "playoff": 45.09018036072144,
+          "winning_impact": 28.086419753086467
+        },
+        "goat_score": 58.48769091216951,
+        "player_id": 2,
+        "player_name": "PlayerB",
+        "rank": 1
+      },
+      {
+        "components": {
+          "accolades": 37.5,
+          "efficiency": 81.2404287901991,
+          "peak": 62.499999999999986,
+          "playoff": 0.0,
+          "winning_impact": 71.42857142857143
+        },
+        "goat_score": 50.316184156153525,
+        "player_id": 3,
+        "player_name": "PlayerC",
+        "rank": 2
+      },
+      {
+        "components": {
+          "accolades": 52.5,
+          "efficiency": 31.24999999999999,
+          "peak": 0.0,
+          "playoff": 100.0,
+          "winning_impact": 50.0
+        },
+        "goat_score": 44.02777777777778,
+        "player_id": 1,
+        "player_name": "PlayerA",
+        "rank": 3
+      }
+    ]
+  }
+}

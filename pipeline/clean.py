@@ -163,6 +163,12 @@ def clean() -> dict[str, pd.DataFrame]:
     check_null_patterns(frames["player_seasons"])
     hand_ws = pd.read_csv(HAND_DIR / "win_shares.csv").astype({"player_name": "string"})
     check_name_consistency(frames["players"], hand_ws)
+    # This key-sort is a DETERMINISM dependency, not cosmetics: DuckDB float
+    # aggregation follows input row order, and logically-identical frames in
+    # a different row order drift derived cells by ~1e-13 (Codex T7 review).
+    # The byte-identical pipeline guarantee (v1.md §10.1) = this sort + the
+    # single-threaded connections in transform/score. Pinned by
+    # test_clean_output_key_sorted and the shuffled-input scoring test.
     return {
         name: frame.sort_values(TABLE_KEYS[name]).reset_index(drop=True)
         for name, frame in frames.items()

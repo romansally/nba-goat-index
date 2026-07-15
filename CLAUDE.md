@@ -76,7 +76,33 @@
 - Every scoring output includes `method_version` (single authoritative source in config, echoed
   verbatim) and `git_sha` when available.
 - To change defined scoring behavior: write `v2.md`, add an ADR, bump `method_version` in config.
-  Never silently change the meaning of v1. Edits to `v1.md` are allowed only for typos/clarity.
+  Never silently change the meaning of v1. Edits to `v1.md` are allowed only for typos/clarity
+  (or as authorized by the input-domain tightening clause below).
+- **Input-domain tightening (the only bump-free path for a behavior-affecting change):** a
+  change that makes the engine REFUSE (raise on) inputs it previously scored may ship without
+  a `method_version` bump only when ALL of the following hold, verified mechanically and
+  recorded in a dedicated ADR:
+  1. It only converts inputs from scored to refused-with-an-error. The refusal aborts the
+     entire run — it never warns, coerces, repairs, defaults, or skips/drops rows or
+     elements — and no value in any output changes for any input still accepted.
+  2. The refusal predicate is decidable from the run's inputs alone (the data, and which
+     inputs the configured scope consumes) — never from computed scores, rankings, or their
+     relationship to any target.
+  3. The committed seed dataset, fixtures, and golden snapshots pass UNCHANGED across the
+     ENTIRE change — "the change" is the full diff against the target branch's merge base,
+     never any single commit (commit boundaries are author-controlled). Artifacts existing
+     at the merge base must be byte-identical to it; an artifact CREATED within the change
+     must have no prior version and stay byte-identical from its creation commit through
+     the tip. A prior artifact edit counts as separate only if it was independently
+     reviewed and merged to the target branch before this change began. `make check` is
+     green, and every golden file remains byte-identical WITHOUT regeneration (enforced by
+     tests/unit/test_reference_artifacts.py).
+  4. The methodology doc is amended in the same change to state the new domain rule, citing
+     the ADR (that specific edit is authorized by this clause).
+
+  Widening the domain back — accepting inputs that currently raise — is a behavior-changing
+  scoring change and follows the full v2 path, as does any change that cannot satisfy every
+  condition above. (Clause added by ADR-0003; first application: ADR-0002.)
 - If unsure whether a change is behavior-preserving, treat it as behavior-changing.
 - **The iron rule:** if a result looks wrong, fix the method, not the player. Players are NEVER
   hand-placed into rankings. Consensus lists (ESPN, The Ringer) are a sanity check via Spearman

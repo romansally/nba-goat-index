@@ -51,6 +51,14 @@ MART_KEYS: dict[str, list[str]] = {
 
 ALL_NBA_TEAM_NUMBERS = {"first": 1, "second": 2, "third": 3}
 
+# "Sum to exactly 1.0" (v1.md §10.3) verified in float64 at 1e-12: a
+# decimal-exact vector carries only ~1e-16 representation error, so anything
+# past 1e-12 is real config drift, not rounding. One constant for every
+# weight block — the production blend here and the scoring blocks in
+# pipeline/score.py (Codex T7 re-review: production_blend had been left at
+# the old 1e-9, admitting a demonstrated 5e-10 drift).
+WEIGHT_SUM_ATOL = 1e-12
+
 
 class TransformValidationError(RuntimeError):
     """A named check in 06_validation_checks.sql returned violations."""
@@ -80,7 +88,7 @@ def _validate_config(config: dict) -> None:
         raise ValueError(f"production_blend keys must be pts/trb/ast: {sorted(blend)}")
     if not all(_finite_number(v) and v >= 0 for v in blend.values()):
         raise ValueError(f"production_blend values must be finite and >= 0: {blend}")
-    if abs(sum(blend.values()) - 1.0) > 1e-9:
+    if abs(sum(blend.values()) - 1.0) > WEIGHT_SUM_ATOL:
         raise ValueError(f"production_blend must sum to 1.0, got {blend}")
     peak_n = config["peak_n"]
     if not isinstance(peak_n, int) or isinstance(peak_n, bool) or peak_n < 1:
@@ -161,6 +169,11 @@ def _execute_transforms(
     a mart between build and check to prove a named check fires — the public
     API has no bypass."""
     con = duckdb.connect()
+    # v1.md §10.1 byte-identical determinism: multi-threaded operators combine
+    # float partial sums in scheduling-dependent order (observed in T7 on the
+    # scoring aggregate). Serial execution is order-deterministic; the marts
+    # are a few hundred rows, so the cost is nil.
+    con.execute("SET threads = 1")
     for name in SCHEMAS:  # the four cleaned tables, e.g. view players_clean
         con.register(f"{name}_clean", frames[name])
     _set_params(con, config, scope)

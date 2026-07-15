@@ -9,6 +9,7 @@ import pandas as pd
 import pytest
 
 from pipeline.clean import (
+    TABLE_KEYS,
     apply_schema,
     check_name_consistency,
     check_null_patterns,
@@ -204,3 +205,13 @@ class TestCommittedSeed:
         seed_counts = {name: len(frame) for name, frame in load_seed().items()}
         frames = clean()
         assert render(seed_counts, frames) == render(seed_counts, frames)
+
+    def test_clean_output_key_sorted(self):
+        """clean()'s key-sort is a DETERMINISM dependency, not cosmetics
+        (see the note in clean.py): DuckDB float aggregation follows input
+        row order, so v1.md §10.1 byte-stable scoring relies on this exact
+        ordering. If this test fails, determinism downstream is at risk —
+        see the shuffled-input test in test_scoring_invariants.py."""
+        for name, frame in clean().items():
+            expected = frame.sort_values(TABLE_KEYS[name]).reset_index(drop=True)
+            pd.testing.assert_frame_equal(frame, expected)

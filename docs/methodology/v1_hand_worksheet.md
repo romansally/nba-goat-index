@@ -139,7 +139,9 @@ REL_TS_career = **1.3200** · SPI_career = **1.8500**
 
 ## 5. Min–max scaling across the pool (v1.md §6)
 
-`MM(x) = 100 × (x − min)/(max − min)`; degenerate (max = min) → 50.0 for all.
+`MM(x) = 100 × (x − min)/(max − min)`; degenerate (max = min, **award-rate elements** —
+v1.md §6 as amended per ADR-0002: continuous inputs cannot legitimately tie pool-wide and
+are refused instead) → 50.0 for all.
 
 | Element          | A raw   | B raw   | C raw   | A MM    | B MM    | C MM    |
 |------------------|---------|---------|---------|---------|---------|---------|
@@ -157,7 +159,8 @@ REL_TS_career = **1.3200** · SPI_career = **1.8500**
 | REL_TS_career    | 1.2000  | 1.0000  | 1.3200  | 62.50   | 0.00    | 100.00  |
 | SPI_career       | 1.6835  | 1.9500  | 1.8500  | 0.00    | 100.00  | 62.4809 |
 
-\* degenerate min–max rule (all eligible values equal) → 50.0.
+\* degenerate min–max rule (all eligible values equal — an award-rate element, where exact
+pool-wide ties are legitimate; v1.md §6/ADR-0002) → 50.0.
 
 **Blended components:**
 

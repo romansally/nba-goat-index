@@ -1,5 +1,619 @@
 # Validation Log
 
+## 2026-07-13 — T7: scoring engine + invariants + golden snapshot
+
+**Result:** `sql/05_final_goat_scores.sql` (min–max scaling, blends, accolade renormalization,
+weighted final, §6 ranking) driven by `pipeline/score.py` (config validation, scope weight
+vector, provenance, fail-loud output guard) with `pipeline/compare.py` as the §6 pairwise
+view. Full gate green: 207 tests at the round-1 commit (152 at T6 close; this line
+originally said 205 — see the process note in the post-review section), 235 after the
+review round. `make check` offline.
+
+### The two-reference correctness proof
+
+- **Hand worksheet (independent):** the engine reproduces every locked
+  `docs/methodology/v1_hand_worksheet.md` final — career B 57.58 / A 49.63 / C 45.28, peak
+  B 58.49 / C 50.32 / A 44.03 — at the worksheet's ±0.01, plus all 18 career component values
+  at 1e-4, from constants typed into `tests/unit/test_golden.py`, never read from the golden
+  file. The worksheet was hand-computed in T2, before any engine code existed.
+- **Golden snapshot (regression pin):** `tests/golden/v1_scores.json` locks full-precision
+  finals, components, and ranks for BOTH scopes, plus `method_version` and a sha256 of the
+  **parsed** config (canonical JSON — comment edits don't break it; any value change fails the
+  guard structurally). No timestamp/git_sha inside: regeneration on unchanged inputs is
+  byte-identical (verified — two `--write-golden` runs, one hash), so git records when/who.
+- **Independent oracle:** a second, pandas-only implementation of §6 (tests-only — production
+  keeps one scoring implementation, in SQL) matches every engine component and final at 1e-9
+  on the fixture trio AND the real seed, both scopes — including the §12.7 DPOY
+  renormalization for Wilt/West/Russell/Oscar.
+- **What the trio references cannot pin (corrected in review round 2 — the original wording
+  here overclaimed):** every trio career is shorter than `peak_n`, so the worksheet and the
+  golden payload are numerically blind to top-5 **window sizing** (a `peak_n` 5→6 semantic
+  change leaves both untouched). That behavior is pinned by the seven-season transform tests
+  and, since round 2, an end-to-end seven-season scoring test; a `peak_n` **config** edit is
+  caught structurally by the golden config hash. Credit belongs to those mechanisms, not to
+  the double-pin alone.
+
+### Bugs found by the invariants during T7 (both fixed pre-commit)
+
+1. **Determinism (§10.1) caught real cross-process wobble:** `comp_accolades` varied ~7e-15
+   between runs — DuckDB's multi-threaded operators combine float partial sums in
+   scheduling-dependent order. Fixed with `SET threads = 1` on the scoring connection and,
+   as defense-in-depth for the same risk class, the transform connection (cost nil at a few
+   hundred rows). Six post-fix cross-process runs hash identically.
+2. **Bounds (§10.2) caught a rounding-order defect:** the first minmax macro computed
+   `(100·(x−lo))/(hi−lo)`, which double-rounds and pushed PlayerA's playoff component to
+   100.00000000000001; the engine's own guard refused the output. Fixed to
+   `100·((x−lo)/(hi−lo))` — the §6 formula shape — which is exact at both anchors
+   ((hi−lo)/(hi−lo) = 1.0 in IEEE).
+
+### West marginal-impact regression (T6 deferral, closed)
+
+`test_west_cameo_marginal_impact`: removing only the 1967 one-minute playoff cameo moves
+West's final career score by **0.052173** — matching the T6 reviewer's independent derivation
+(0.05217) at 1e-4 — leaves his rank at 15, and leaves all 19 other rows **bit-identical**
+(West is interior on `playoff_raw`; no min–max anchor moves). The documented cameo bound
+holds end-to-end through scaling and weights.
+
+### Real-data findings from the T7 investigation
+
+1. **Min–max is stable on this pool:** all 7 raw component inputs have 20 distinct values;
+   the tightest anchor gap is 0.44% of range (playoff min: Moses 111.00 vs Oscar 112.59).
+   Award-rate anchor ties are exact ties (12 × DPOY 0.0, 3 × FMVP 0.0, 2 × ring 1/21) —
+   deterministic under MM. No final-score ties (smallest gap: career 0.021, peak 0.120), no
+   2-decimal rounding collisions in either scope.
+2. **Trial career ranking:** LeBron 69.10 · Kareem 61.14 · Jokić 59.43 · Magic 58.27 ·
+   Wilt 54.67 · Jordan 52.91 · … · Russell 27.42 (#16) · Moses 15.91 (#20). Two structural
+   observations for T9's honest Spearman interpretation (documented pool-relative behavior,
+   v1.md §12.2 — the iron rule forbids tuning): LeBron is a runaway max anchor on longevity
+   (33.8% of range above #2 Kareem) and playoff volume (38.6% above #2 Duncan), compressing
+   mid-pool spread there; and the 50/25/25 SPI blend rewards elite rebound/assist
+   per-possession production (Jokić anchors peak AND spi_career; Russell is the pool min on
+   peak, longevity, and both efficiency halves — three 0.00 components against a 74.07
+   accolade score). The golden snapshot locks the fixture trio only; the real ranking stays
+   open for T9's reporting.
+3. **Peak-scope ranking** (career → peak): Jokić 78.15 #1, Magic 72.82, Jordan 72.70;
+   PlayerC-style short-career peaks rise exactly as §7 intends. Renormalized weights sum to
+   1.0 in float64 exactly.
+4. **v1.md §10.5 wording imprecision fixed (clarity edit, no version bump):** strictness was
+   claimed for any player "not at the pool maximum", but a *unique pool minimum* also moves
+   with a rising min-holder (MM stays 0 — weak, not strict). The invariant statement now says
+   "strictly inside the pool range"; scoring behavior is untouched (no code reads that
+   sentence), and the tests were always scoped to interior players per the section's own
+   final sentence.
+
+### Negative proof (verified once and reverted)
+
+1. **Any weight change breaks the golden (PRD T7 acceptance 3):** flipping
+   `weights.peak 0.25→0.26` / `longevity 0.10→0.09` (sum still 1.0, so config validation
+   stays green) failed 4 guards — worksheet reproduction in both scopes, the live-engine pin,
+   and the config hash. Reverted → 8/8 green.
+2. **A tampered golden file cannot pass:** editing one stored final (57.58→57.68) failed both
+   the live-engine pin and the golden-vs-worksheet cross-check. Restored by regeneration to
+   the identical byte hash.
+3. **The engine polices its own output:** `test_guard_raises_on_violation` proves the §10
+   guard raises on a dropped row, duplicated rank, NaN component, and out-of-bounds score.
+
+### Post-review fixes (Codex 4-Point review, 2026-07-13 — changes requested)
+
+The review independently confirmed the core math ("no other default-v1 formula, ranking,
+award-rate, or worksheet discrepancy was found" across the full pool, both scopes) and found
+four guardrail/validation gaps, each demonstrated with reproducible numbers, all fixed:
+
+- **Blocking (confirmed): near-degenerate anchors silently amplified noise or masked
+  corruption.** Two demonstrated escapes: ws set proportional to minutes gave a WS48 pool
+  span of 5.55e-17 — pure float noise — which min–max stretched into a full 0/50/75/100
+  spread (13 of 20 ranks changed, largest final swing 11.6873); uniformly zeroed ws +
+  team_srs (contract-valid row by row) flowed 50s through the exact-degenerate rule and
+  changed 12 of 20 ranks. Fixed with a **documented near-equality policy** in
+  `pipeline/score.py::_check_anchor_ranges`: the seven continuous component inputs must show
+  a pool range above 1e-9 RELATIVE to their magnitude (an all-equal continuous pool is
+  corruption-shaped — real careers are never bit-identical), and award rates — where exact
+  ties are legitimate and fixture-exercised — refuse only the unequal-yet-noise-thin
+  near-tie. The §6 exact-tie → 50 scaling rule is unchanged; no valid pool's scores change
+  (real spans sit ≥ 9% of magnitude — 8 orders above the threshold). Tests:
+  `test_near_constant_ws48_pool_refused`, `test_uniform_zero_anchors_refused`.
+- **Confirmed: weight/config validation escapes.** (a) The 1e-9 sum tolerance admitted a
+  demonstrated 5e-10 drift (peak weight 0.2500000005) that shifted scores at the 10th
+  decimal while v1.md said "exactly" — tightened to **1e-12** and the spec/code relationship
+  documented in v1.md §10.3 (decimal-exact vectors carry ~1e-16 representation error;
+  equal-sixths Custom vectors still validate). (b) `method_version` had no schema check and
+  a None produced valid scores with null provenance — now validated as a non-empty string
+  before anything runs (parametrized rejection: None/NaN/int/mapping/list/empty/blank/
+  missing). (c) A DPOY-only accolade vector gave every pre-1983 player a 0/0
+  renormalization denominator, caught only downstream by the NaN guard — accolade weights
+  are now **strictly positive at validation time** (v1.md §10.3 note).
+- **Confirmed: config-hash schema-shape collision.** `{1: "v1"}` and `{"1": "v1"}` hashed
+  identically while producing different provenance. `config_sha256` (now in
+  `pipeline/golden.py`) enforces string-only keys and finite numbers recursively and
+  serializes with `allow_nan=False` — noncanonical configs raise instead of colliding.
+  Tests: parametrized `test_config_hash_rejects_noncanonical`.
+- **Doc-only (confirmed): the "double-pin has no gap" framing overclaimed** — corrected
+  above and in `docs/data_model.md`: peak-window sizing is credited to the seven-season
+  tests, config drift to the hash.
+
+Also fixed from the review's list: `tests/golden/` filename is now **derived** from
+`method_version` (`pipeline/golden.py::golden_path` — a v2 regeneration writes
+`v2_scores.json`, it cannot overwrite the locked v1 file; parity test added).
+`pipeline/compare.py` rejects mixed-scope frames, mixed-method_version frames, and
+self-comparison (a career/peak hybrid would produce a verdict whose numbers are not
+comparable). The golden tooling moved from `score.py` to `pipeline/golden.py` (score.py
+stays within the Rule 6 complexity budget with the new guards; regeneration is now
+`python -m pipeline.golden`) — the regenerated snapshot is byte-identical to the committed
+one, confirming the move changed nothing.
+
+**Determinism hardening (review caveat + own follow-through):** the original test only
+repeated within one process. Now: a **cross-process test** (two `python -m pipeline.score`
+subprocesses must hash-agree — the shape of the original wobble), direct assertions that
+BOTH layers' DuckDB connections run single-threaded, and the input-order dependency made
+explicit — the review measured ~1.42e-13 cell drift under shuffled logically-identical
+input rows, currently protected only by `clean()`'s key-sort. That sort is now documented
+in `pipeline/clean.py` as a determinism dependency, pinned by
+`test_clean_output_key_sorted`, and `test_shuffled_input_order_bounded_and_resortable`
+proves the loop closes: shuffled input keeps ranks with drift ≤ 1e-9, and re-sorting by the
+clean keys restores byte-identical output.
+
+**Independently verified by the reviewer (logged as evidence, no change needed):**
+
+1. **Min–max anchor exactness:** on PlayerA's playoff element (hi = x = 50.833333333333336,
+   lo = 9.25) the pre-fix form `(100·(x−lo))/(hi−lo)` yields 100.00000000000001; the shipped
+   form `100·((x−lo)/(hi−lo))` yields exactly 100.0.
+2. **Accolade renormalization, all 20 real players, both scopes, to 1.421e-14:** career —
+   16 players use denominator 1.0 and four (Wilt/Russell/West/Oscar) exclude DPOY at 0.925;
+   peak — 15 use 1.0, two use 0.925, and three exclude DPOY + Finals MVP at 0.775 (their
+   top-5 windows predate the 1969 Finals MVP).
+
+**Process note (recurring count drift, T6's 16-vs-20 pattern):** the round-1 entry above
+logged "205 tests" written before the final gate run added two guard tests (actual: 207).
+Corrected in place; from this round on, logged counts are updated only AFTER the final gate
+run of a round. **Round-2 final gate: 235 passed** (207 → 235, +28 this round).
+End-to-end scoring test additions this round: seven-season peak-scope pool
+(the trio cannot exercise window sizing), near-degenerate refusals, method_version schema,
+tolerance rejection, canonical-hash rejections, golden filename parity, pairwise
+homogeneity/self-compare rejections, cross-process + shuffled-input determinism.
+
+### Post-re-review fixes (Codex 4-Point re-review, 2026-07-13 — one severe + follow-through)
+
+The re-review confirmed all six round-2 fixes work as tested and stated explicitly that no
+other default-real-data formula, accolade, ranking, golden-value, compare, or determinism
+discrepancy exists beyond its findings. All findings fixed:
+
+- **Severe (confirmed): the near-degenerate threshold failed for anchors straddling zero.**
+  A purely relative threshold (`range ≤ 1e-9 · max(|lo|, |hi|)`) shrinks to nothing when
+  both anchors are tiny: per-player srs_w spanning ±1e-15 (contract-valid) passed the guard,
+  and reversing which player received which noise value flipped 18 of 20 ranks (max final
+  swing 10.0). Fixed with an absolute floor: `range ≤ 1e-12 + 1e-9 · max(|lo|, |hi|)`
+  (`NEAR_DEGENERATE_ATOL`). Tests: `test_tiny_symmetric_srs_refused` and
+  `test_tiny_srs_reversal_cannot_change_output` — with refusal, the reversal guarantee holds
+  the strongest way: neither ordering scores at all.
+- **METHODOLOGY DECISION (owner call, not resolved as a side effect):** the reviewer
+  correctly flagged that refusing degenerate/near-degenerate continuous pools changes
+  observable behavior vs v1.md §6's literal "every player scores 50.0" for a class of
+  contract-valid inputs. Three options were laid out with tradeoffs (preserve-§6 + metadata;
+  refuse + ADR without bump; full v2 bump); the owner chose **refuse + ADR-0002, no
+  method_version bump**. Rationale (full record: `docs/adr/0002-continuous-anchor-input-
+  domain.md`): it is a domain restriction — no in-domain input's output changes, proven
+  mechanically by the golden snapshot remaining byte-identical; §9 already establishes
+  fail-loud input refusal as v1-native; no committed artifact ever exercised continuous
+  degenerate-50. v1.md amended accordingly: §6's degenerate rule is scoped to award-rate
+  elements (the only case the worksheet exercises) and §9 (retitled "Missing data and
+  input-domain policy") carries the anchor-range rule with the exact threshold.
+- **Confirmed: the guard wrongly policed `longevity_raw` under peak scope**, where §7 drops
+  the component (zero weight, absent from output). The guard is now scope-aware. Test:
+  `test_peak_scope_ignores_longevity_degeneracy` (peak-scope degenerate longevity scores;
+  the identical tamper under career scope is refused).
+- **Confirmed: `production_blend` still validated at the old 1e-9** in `transform.py` while
+  the scoring blocks were tightened to 1e-12 — a demonstrated pts = 0.5000000005 (sum
+  1.0000000005) passed the public path and moved a fixture final by 1.8e-8. Fixed:
+  `WEIGHT_SUM_ATOL = 1e-12` now lives in `transform.py` as the single shared constant
+  (score.py imports it — no drift between layers is possible). Test: new
+  `test_config_validation_branches` case.
+- **Confirmed: golden filename derivation was defeatable** by a path-like version —
+  `method_version="../golden/v1"` resolved onto the existing v1 snapshot, bypassing the
+  round-2 overwrite protection. `golden_path` now requires a bare `v<N>` token
+  (`^v[1-9][0-9]*$`). Test: parametrized `test_golden_path_rejects_unsafe_method_version`
+  (traversal, subpath, absolute path, v0, V1, trailing space, empty, zero-padded, non-str).
+- **Test bug (confirmed):** the shuffled-input assertion used `atol=1e-9` without `rtol=0`,
+  so pandas' default relative tolerance would have admitted ~5e-4 drift at score magnitude
+  100. Fixed: `rtol=0`.
+
+**Round-3 final gate: 248 passed** (235 → 248, +13 this round), `make check` offline,
+golden snapshot byte-identical through every change in the round — the boundary condition
+of the ADR-0002 decision, verified after each edit.
+
+### Post-round-3 fixes (Codex 4-Point review round 3, 2026-07-13 — governance + docs)
+
+Round-3 verdict: **all six round-2 technical fixes PASS with strong verification**; two
+findings requiring attention, both resolved:
+
+- **GOVERNANCE (the important one — owner decision, second of the tier):** Codex correctly
+  objected that ADR-0002 could not override CLAUDE.md Rule 1 — Rule 1 as written required a
+  v2 bump for ANY defined-behavior change, and the uniform-zero input genuinely changed from
+  "scores returned" to "raises"; the ADR's "domain restriction" category existed nowhere in
+  the constitution. The owner was given (a) exact amendment wording, (b) an exploit-resistance
+  analysis, (c) an honest amendment-vs-bump assessment, and **approved amending Rule 1
+  itself**: a new input-domain tightening clause permitting bump-free refusal changes only
+  under four mechanically-verified conditions (refuse-only whole-run abort with no accepted
+  output changed; input-decidable predicate; reference artifacts untouched with golden
+  byte-identical sans regeneration; methodology doc amended citing the ADR) — widening back
+  is explicitly v2. Recorded in **ADR-0003** (the constitutional amendment, with a
+  condition-by-condition compliance checklist for the first application) and **ADR-0002
+  revised** to invoke the clause as its authority, with the process history kept honestly
+  (originally shipped as an implicit exception; objected to; constitution amended; ADR
+  re-grounded). Two clauses were tightened from the reviewed draft and flagged to the owner:
+  condition 3 scoped to the named reference artifacts (the literal draft would have forbidden
+  code changes, unsatisfiable by any real diff), and Rule 1's "typos/clarity only" sentence
+  cross-referenced to condition 4 (which would otherwise contradict it). Evidence for this
+  application verified empirically: relative to commit 09fef29 (the commit immediately
+  preceding the guard — the condition-3 baseline, defined in ADR-0003), zero diffs under
+  `data/seed/`, `tests/fixtures/`, `tests/golden/`; gate green; golden byte-identical
+  (SHA-256 `50944af1…8342` at 09fef29 and now).
+- **Doc contradiction (confirmed): v1.md §12.2 claimed the final score is min–max scaled**
+  and anchors 0/100 — §6 correctly defines it as an un-restretched weighted sum, and real
+  output proves it (career finals span ≈16–69, peak ≈23–78; no player at 0 or 100). §12.2
+  now describes element-level anchoring with blended components and finals as convex
+  combinations that inherit pool-relativity without anchoring the scale.
+- **Stale degenerate-50 wording:** `docs/data_model.md` now states the refuse behavior for
+  continuous inputs (with the peak-scope Longevity exemption) and scopes 50.0 to award-rate
+  elements; the hand worksheet's two degenerate-rule mentions are scoped the same way (prose
+  only — no locked value touched).
+- **Tests added (Codex round-3 list):** `test_noise_thin_threshold_pinned_exactly` — pins
+  the guard formula at the exact float fixed-point boundary (t = atol + rtol·t) inclusively,
+  one ulp above it exclusively, and each term's necessity separately (dropping atol reopens
+  the straddling-zero severe finding; dropping rtol reopens the round-1 large-magnitude
+  case); `test_golden_main_v2_writes_new_file_and_preserves_v1` — runs the FULL
+  `pipeline.golden.main()` write path with method_version="v2" against a temp dir: creates
+  v2_scores.json, leaves both v1 copies byte-identical, and the v2 scores equal the locked
+  v1 scores exactly (only the version string and config hash differ).
+
+**Round-4 final gate: 250 passed** (248 → 250, +2 this round), `make check` offline, golden
+byte-identical, reference artifacts untouched relative to the 09fef29 baseline (0 diffs
+under seed/fixtures/golden vs that commit — the ADR-0003 condition-3 evidence, checked
+directly; vs `main` the golden file is necessarily an addition, since T7 created it).
+
+### Post-round-4 fixes (Codex 4-Point review round 4, 2026-07-13/14 — evidentiary precision)
+
+Round-4 verdict: no severe runtime/scoring bug; the reviewer independently confirmed
+09fef29 and the current code produce byte-identical real-seed output (the no-bump
+decision's mechanical foundation). Four precision findings, all fixed:
+
+- **Confirmed: ADR-0003's condition-3 claim was imprecise** — "no diff under tests/golden/
+  across the entire change" is false against `main`, where the cumulative T7 diff ADDS
+  v1_scores.json (the file was born in 09fef29). Fixed: the condition-3 evidence now names
+  its baseline explicitly — commit 09fef29, the commit immediately preceding the guard —
+  with the golden SHA-256 (`50944af1…8342`, identical then and now, re-verified via
+  `git show 09fef29:… | shasum`) and zero diff lines under all three reference paths vs
+  that baseline. ADR-0003 gained a "Baseline for condition 3" section defining "unchanged"
+  as relative-to-the-immediately-preceding-commit and explaining why commit-boundary
+  baselining cannot launder reference changes (the baseline is fixed by history, not
+  chooseable; same-change edits always diff against it; prior-commit edits face their own
+  gates — Rule 5 for goldens, visible review for seed/fixtures). The same imprecision was
+  fixed in ADR-0002's compliance item 3 and both QA-log claims above. **[Superseded in the
+  round-5 remediation below: the single-commit baseline was itself exploitable — "fixed by
+  history" is false because commit boundaries are author-controlled. The definition is now
+  the merge base against main.]**
+- **Confirmed: v1.md §9 still used the round-3-rejected framing** ("a domain restriction,
+  not a scoring change") — contradicting what the Rule 1 amendment establishes. Replaced
+  with the precise statement: it changes the accepted input domain without changing any
+  score for an input that remains accepted — a behavior-affecting change shipping bump-free
+  under the Rule 1 clause.
+- **Confirmed: ADR-0002's metadata alternative was self-contradictory** (claimed noise-thin
+  pools would score AND that ULP-apart inputs would refuse). Rewritten to describe the
+  alternative actually presented to the owner — §6-literal for exact ties, refusal only for
+  near-ties, plus diagnostics — with the pure metadata-only variant rejected a fortiori.
+- **Confirmed (minor): the `_noise_thin` boundary test's docstring inverted the semantics**
+  — "one float step above [the threshold] is refused" where the assertion proves it is
+  ACCEPTED (no longer noise-thin). Docstring and inline comment corrected to match what the
+  test proves.
+- **Test added (round-4 request):** `test_refusal_precedes_scoring_connection` — patches
+  `pipeline.score._connect` to raise if ever called, submits the uniform-zero pool, and
+  asserts the anchor-range ScoringError still fires: refusal mechanically precedes any
+  scoring SQL connection, not merely any output. (The transform layer's own connection is
+  untouched — the guard consumes the marts it builds.)
+
+**Round-5 final gate: 251 passed** (250 → 251, +1 this round), `make check` offline, golden
+byte-identical (SHA re-verified against the 09fef29 baseline).
+
+### Post-round-5 fixes (Codex 4-Point review round 5, 2026-07-14 — a working exploit)
+
+Round-5 verdict: everything passes except one finding — the most important of the tier:
+**Codex constructed a working exploit against ADR-0003's anti-laundering defense.** The
+claim "the baseline is fixed by history, not chooseable" is false — commit boundaries are
+author-controlled. The demonstrated two-step attack: commit A quietly modifies the seed so
+a future guard won't reject it (passes contracts and the gate; touches no golden, so
+Rule 5 never fires); commit B introduces the guard. "The commit immediately before the
+tightening" is now commit A, so a per-commit zero-diff check passes cleanly while the seed
+actually moved — and merging both together hides the maneuver entirely. Fixed:
+
+- **Condition 3 redefined on the merge base.** "The change" is now the ENTIRE reviewed
+  merge diff relative to the target branch's merge base (`git merge-base main HEAD`),
+  never any single commit — commits A and B both land inside that diff no matter how the
+  work is split or ordered, so the attack produces a visible seed diff by construction. A
+  prior artifact edit counts as separate only if independently reviewed and merged to the
+  target branch BEFORE the change began. Reworded in CLAUDE.md Rule 1 condition 3 itself
+  and in ADR-0003's verbatim quote (kept in sync — a third constitutional wording change,
+  flagged to the owner like the previous two: leaving the constitution on the old wording
+  while fixing only the ADR would have left the exploit alive by interpretation).
+  ADR-0003's baseline section now records the exploit and the corrected reasoning;
+  ADR-0002's compliance item 3 matches.
+- **Created-within-the-change allowance (the founding case, made explicit):**
+  `tests/golden/v1_scores.json` cannot show "zero diff from main" — main carries only
+  `.gitkeep`; the file was born in this change at 09fef29. The allowance is narrow: no
+  prior version existed (nothing to launder), bytes pinned from the creation commit
+  through the tip (blob OID equality, 09fef29 vs working tree — SHA-256 `50944af1…8342`
+  throughout), and the created artifact still faces its own independent gates (the
+  worksheet constants in test_golden.py; Rule 5 thereafter).
+- **Mechanical enforcement added:** `tests/unit/test_reference_artifacts.py` runs in every
+  `make check` and recomputes the condition-3 evidence against the merge base — seed +
+  fixtures zero-diff, merge-base goldens blob-identical, created goldens pinned from their
+  most recent add-commit. On main itself it degrades to "no uncommitted reference edits."
+  **[Superseded in the round-6 remediation below: "most recent add-commit" was itself a
+  bypass — delete/re-add reset the pin — along with two more holes in this first version
+  of the enforcement.]**
+  Negative proofs, verified once and reverted: a one-byte seed append failed
+  `test_seed_and_fixtures_match_merge_base`; a one-digit golden edit failed
+  `test_created_goldens_pinned_from_creation` — the tampered CREATED golden was caught by
+  the creation-pin rule itself, demonstrating the carve-out is not a hole.
+
+**Round-6 final gate: 254 passed** (251 → 254, +3 this round), `make check` offline, golden
+byte-identical, all three reference-artifact guards green against merge base 05a3947.
+
+### Post-round-6 fixes (Codex 4-Point review round 6, 2026-07-14 — enforcement bypasses)
+
+Round-6 verdict: the merge-base fix genuinely closes the round-5 exploit and the branch
+passes cleanly under it — but the re-break challenge succeeded against the ENFORCEMENT
+mechanism itself: three bypasses in the first version of
+`tests/unit/test_reference_artifacts.py`, all severe as workflow defects because ADR-0003
+claims mechanical enforcement that these sequences defeated. All closed:
+
+- **Severe (confirmed): delete/re-add reset the creation pin.** The check pinned created
+  goldens to their "most recent add commit," so create → delete → re-add-with-different-
+  bytes passed cleanly — contradicting "no prior version, pinned from creation." Fixed:
+  `check_created_goldens` now inspects the full `merge_base..HEAD` history — exactly ONE
+  add, ZERO deletes — and additionally requires the path to have NO history reachable from
+  the merge base at all (a file that existed on main and was removed before the merge base
+  has a prior version to launder; it must not qualify as "genuinely new"). Regression
+  tests build both attack shapes in throwaway git repos:
+  `test_delete_readd_laundering_fails`, `test_removed_before_merge_base_is_not_genuinely_new`.
+- **Severe (confirmed): non-JSON goldens bypassed every check.** Both golden-detection
+  helpers filtered on `.json`, while Rule 1 protects everything under `tests/golden/`.
+  Fixed: every tracked file under `tests/golden/` is protected regardless of extension,
+  with an explicit metadata allowlist (`.gitkeep` only). A deleted merge-base golden is
+  now also a named violation (previously a raw subprocess error). Regression:
+  `test_non_json_golden_is_protected` (tampered `.csv` golden refused).
+- **Lower severity (confirmed): criss-cross histories yield multiple merge bases** and
+  `git merge-base` silently picks one, potentially hiding drift relative to the unchecked
+  candidate. Fixed: `resolve_merge_base` uses `merge-base --all`, requires exactly one
+  result, fails loudly otherwise. Regression: `test_multiple_merge_bases_rejected`
+  (constructs a real criss-cross: main and a side branch each merge the other's pre-merge
+  tip).
+- **Shallow repositories now rejected outright** (`rev-parse --is-shallow-repository` must
+  be false) instead of documented as unsupported — the creation-pin and merge-base checks
+  are meaningless without full history. Regression: `test_shallow_repository_rejected`
+  (real `--depth 1` clone).
+
+CLAUDE.md needed NO wording change this round: condition 3's text ("no prior version …
+pinned from its creation commit through the tip") already stated the correct requirement —
+the enforcement code caught up to the constitution. ADR-0003's enforcement descriptions
+updated to the hardened semantics; the round-6 entry's "most recent add-commit" claim
+carries a supersession marker.
+
+**Round-7 final gate: 259 passed** (254 → 259, +5: two laundering regressions, non-JSON
+protection, criss-cross rejection, shallow rejection), `make check` offline, golden
+byte-identical, all guards green against merge base 05a3947.
+
+### Post-round-7 fixes (Codex 4-Point review round 7, 2026-07-14 — the index exploit)
+
+Round-7 verdict: all round-6 fixes confirmed solid (5/5 regression tests pass) and the
+branch stays clean — but a new, FUNDAMENTAL exploit was found and reproduced by the
+reviewer in a throwaway repo: **the guard checked working-tree bytes, while `git commit`
+records INDEX bytes, and the two can be made to differ.** Stage malicious bytes
+(`git add`), restore the safe content to the working file without re-staging: every
+working-tree check passes, and the next commit records the malicious staged version
+anyway. The same gap covered goldens (only the working-tree hash was checked, never the
+staged entry) and generalized to untracked files under protected paths never being
+examined at all. All closed:
+
+- **Seed/fixtures now checked in BOTH places:** `git diff <merge-base>` (working tree)
+  AND `git diff --cached <merge-base>` (index) must be empty for the protected trees.
+  Regression: `test_staged_seed_bytes_caught_despite_clean_working_tree` reproduces the
+  reviewer's exact sequence — stage malicious seed bytes, restore safe working bytes —
+  and asserts the index leg fires.
+- **Goldens verified as (mode, blob) pairs in BOTH the staged index entry and the working
+  tree** against the expected entry (merge base for pre-existing goldens; the sole
+  creation commit for created ones). Mode is part of the comparison: a regular-file→
+  symlink swap with identical apparent content is a 100644→120000 mode change and is
+  rejected; only plain regular files are valid reference artifacts (executable bits are
+  likewise refused). Regressions: `test_staged_golden_bytes_caught_despite_pinned_
+  working_tree`, `test_symlink_mode_swap_rejected` (symlink to a decoy file with
+  byte-identical apparent content).
+- **Untracked files under protected trees refused outright** (`git ls-files --others
+  --exclude-standard`) — an untracked artifact could otherwise be staged the moment after
+  a passing check. New standing guard test on the real repo plus regression
+  `test_untracked_file_under_protected_tree_caught`.
+- A golden missing from the INDEX (unstaged/removed) is now its own named violation,
+  alongside the existing working-tree-missing case.
+
+Guard suite: 8 → 13 tests (4 standing guards on the real repo + 9 bypass regressions on
+throwaway histories). CLAUDE.md again needed no wording change — condition 3 forbids
+modification "in the same change" without qualifying where the bytes live; the
+enforcement now checks everywhere a commit can source bytes from.
+
+**Round-8 final gate: 264 passed** (259 → 264, +5: the untracked standing guard on the
+real repo plus four new bypass regressions), `make check` offline, golden byte-identical,
+all guards green against merge base 05a3947.
+
+### Post-round-8 fixes (Codex 4-Point review round 8, 2026-07-14 — the tip-visibility gap)
+
+Round-8 verdict: scoring/methodology fully clean (re-confirmed); one severe enforcement
+gap, one smaller gap, one optional boundary note. All addressed:
+
+- **Severe (confirmed, reviewer-reproduced): created-then-deleted goldens evaded every
+  guard.** `check_created_goldens` iterated only paths tracked at the tip; a golden
+  created mid-branch and deleted before the tip was in neither "tracked at merge base"
+  nor "tracked now," so its history was never inspected — directly contradicting
+  condition 3's "pinned from creation through the tip." Fixed exactly as prescribed: the
+  candidate set is now the UNION of merge-base tree paths, current index paths, and every
+  golden path touched anywhere in `merge_base..HEAD` (`git log --format= --name-only -z
+  --no-renames`, so renames surface as explicit delete/add pairs and nothing hides in
+  formatting); the existing rules — genuinely new, exactly one add, zero deletes, final
+  index+worktree presence via `_verify_golden` — now apply to the full path set. The
+  violation message states the rule plainly: a created reference artifact must appear
+  exactly once and SURVIVE to the tip. Regression:
+  `test_created_then_deleted_golden_is_rejected` (add → commit → delete → commit, no
+  re-add: refused).
+- **Smaller (confirmed): `--exclude-standard` let a `.gitignore` entry hide an untracked
+  protected file** from the untracked check, contradicting "any untracked file." Fixed:
+  the check now runs without exclusions — ignored or not, an untracked file under a
+  protected tree is refused. Verified first that the real repo is clean under the
+  stricter rule (zero untracked files under all three trees, no exclusions applied).
+  Regression: `test_ignored_untracked_protected_file_is_rejected` (gitignored smuggled
+  files under all three protected trees; the violation lists every one).
+- **Boundary note — DECIDED: addressed, not just documented.** Default `git hash-object`
+  applies clean filters, so a `.gitattributes` filter could normalize physically tampered
+  working bytes back to the expected blob. Since the pipeline reads PHYSICAL bytes, raw
+  physical equality is the invariant that matters: golden hashing now uses
+  `--no-filters`. Consequence accepted and documented: an autocrlf-mutated checkout fails
+  loudly, which is correct behavior for byte-exact reference data. The residual — the
+  seed/fixtures legs ride on `git diff`, which respects filters — stays inside the
+  round-8 threat boundary (local-run distortion; cannot reach main unseen) and is
+  documented in the guard's docstring rather than rebuilt. Optional regression test
+  implemented: `test_clean_filter_physical_difference_rejected`, which first PROVES the
+  attack premise (the filtering hash equals the committed blob for physically different
+  bytes) and then asserts the --no-filters check refuses it.
+
+Guard suite: 13 → 16 tests. CLAUDE.md unchanged again — condition 3's "pinned from
+creation through the tip" already forbade created-then-deleted artifacts; enforcement
+caught up to the constitution for the third consecutive round.
+
+**Round-9 final gate: 267 passed** (264 → 267, +3 regressions), `make check` offline,
+golden byte-identical, all guards green against merge base 05a3947.
+
+### Post-round-9 fixes (Codex 4-Point review round 9, 2026-07-14 — history simplification)
+
+Round-9 verdict: one severe finding; scoring/methodology not re-flagged. Addressed:
+
+- **Severe (confirmed, premise reproduced in-test): default `git log` history
+  simplification let a merged side branch's golden history evade every guard.** All four
+  path-limited history queries (`_goldens_touched`, the pre-merge-base prior-version
+  lookup, and the adds/deletes queries in `check_created_goldens`) walked only one
+  TREESAME parent at each merge — when a merge's result tree matches a parent for the
+  queried path, git prunes the other parent's history entirely. A golden created and
+  deleted on a side branch, merged with an ordinary `--no-ff` merge, left NO trace in any
+  query: the round-8 exploit transported through a normal merge workflow, no adversarial
+  git config required. Fixed exactly as prescribed: `--full-history` added to all four
+  queries, forcing the walk over every commit reachable in the range. Regressions:
+  - `test_merged_side_branch_created_then_deleted_golden_is_rejected` — create+delete a
+    golden on a side branch, `--no-ff` merge into a feature whose first parent never had
+    the path; the test first PROVES the premise (the simplified path-history of
+    `merge_base..HEAD` is empty — the side branch is invisible without the flag), then
+    asserts `check_created_goldens` refuses ("survive to the tip").
+  - `test_prior_version_hidden_in_merged_ancestry_is_not_genuinely_new` — add+delete a
+    golden on a side branch BEFORE the merge base, merge into main, reintroduce the path
+    with different bytes inside the change; the `--full-history` prior-version lookup
+    refuses ("not genuinely new").
+
+  Both regressions verified against the unfixed code (flag stripped in a scratch copy):
+  each fails with DID NOT RAISE — they genuinely pin the fix.
+
+Guard suite: 16 → 18 tests. CLAUDE.md unchanged for the fourth consecutive round —
+condition 3's "no prior version" and "pinned from creation through the tip" already
+forbade both shapes; enforcement caught up to the constitution again.
+
+**Round-10 final gate: 269 passed** (267 → 269, +2 regressions), `make check` offline,
+golden byte-identical, all guards green against merge base 05a3947.
+
+### Post-round-10 fixes (Codex 4-Point review round 10, 2026-07-14 — the committed-HEAD gap)
+
+Round-10 verdict: one severe finding — the guard verified the working tree and the index
+but never the COMMITTED HEAD tree, the mirror image of round 7's index gap: `git commit`
+records the index, but a MERGE records HEAD's tree, so malicious bytes committed at HEAD
+behind a safe index/worktree restoration passed every leg while a merge would still carry
+the malicious committed bytes. All three prescribed fixes applied:
+
+- **Fix 1 — `check_seed_and_fixtures` grew a third leg:** `git diff <merge-base> HEAD --
+  data/seed tests/fixtures` must be empty, alongside the existing working-tree and
+  `--cached` legs. Regression:
+  `test_committed_head_seed_tamper_rejected_despite_safe_index_and_worktree` — commits
+  malicious seed bytes, restores safe bytes to index AND worktree, first PROVES both
+  pre-round-10 legs are clean, then asserts the committed-HEAD leg refuses.
+- **Fix 2 — `_verify_golden` now requires the HEAD tree entry (mode + blob) to equal the
+  expected entry**, alongside the existing staged-index and working-bytes checks.
+  Regression: `test_committed_head_golden_tamper_rejected_despite_safe_index_and_worktree`
+  — commits a tampered golden, restores the pinned bytes to index and worktree, first
+  proves the staged entry equals the merge-base entry, then asserts refusal.
+- **Fix 3 — creation-pin bypass, same root cause:** "one add, zero deletes" never
+  inspected MODIFY commits, so create → modify-to-malicious → restore left tip, index,
+  and worktree all equal to the creation entry while an intermediate commit carried
+  different bytes. Fixed as prescribed: every commit on
+  `git rev-list --ancestry-path <creation>..HEAD` must record exactly the creation entry
+  (rev-list is not path-limited, so round-9's history-simplification trap does not apply
+  here). Regression: `test_created_golden_modify_then_restore_is_rejected`.
+
+All three regressions verified against the unfixed code (the three fixes reversed in a
+scratch copy): each fails with DID NOT RAISE — they genuinely pin the fixes.
+
+Guard suite: 18 → 21 tests. CLAUDE.md unchanged for the fifth consecutive round —
+condition 3's "byte-identical" and "pinned from creation through the tip" already forbade
+all three shapes; enforcement caught up to the constitution again.
+
+**Process decision (owner, 2026-07-14):** round 11 is the FINAL review pass. It asks one
+specific question — "the guard now checks HEAD, index, worktree, and full commit-ancestry
+for created artifacts: are there any other places a commit's tree could diverge from what
+the guard inspects?" — and any finding it produces is documented here as a known
+limitation rather than fixed, and the branch merges regardless. Ten rounds of adversarial
+hardening on a solo project's own governance mechanism is past reasonable diminishing
+returns; the committed-HEAD gap was the last structurally distinct surface (worktree,
+index, HEAD, ancestry), and everything found after round 7 was a variant of an
+already-covered concept.
+
+**Round-11 final gate: 272 passed** (269 → 272, +3 regressions), `make check` offline,
+golden byte-identical, all guards green against merge base 05a3947.
+
+### Round 11 (final pass, 2026-07-14): exhaustion confirmed — documented known limitations
+
+Round-11 verdict: **exhaustion confirmed, T7 cleared for merge.** The final-pass question
+("the guard now checks HEAD, index, worktree, and full commit-ancestry for created
+artifacts — are there any other places a commit's tree could diverge from what the guard
+inspects?") produced five enumerable divergence surfaces. Per the round-10 process
+decision, they are documented here as known limitations — each is out of scope for this
+guard's job, not an unaddressed bypass. None can place tampered reference bytes onto
+`main` without appearing in the reviewed merge diff.
+
+1. **Check-to-merge timing gap.** The guard runs when `make check` runs; nothing binds
+   "the commit that passed the gate" to "the ref that gets merged" — commits made after a
+   passing local gate are unchecked until the next run. Out of scope: the gate is a local
+   invariant check, not a merge-time enforcement service. The residual is closed by
+   policy (merge only a just-gated tip) today and mechanically by post-Tier-1 CI running
+   the same gate on the exact merge ref; late commits are visible in the reviewed merge
+   diff.
+2. **Future merge-result differences.** The guard verifies the branch tip; the merge
+   commit `main` will record is a NEW tree computed at merge time — conflict resolutions
+   or content-level merging can make it differ from the verified tip. Out of scope: a
+   tree cannot be inspected before it exists. The squash-merge policy keeps the merged
+   tree equal to the reviewed tip's diff, and `main` must itself pass `make check`
+   post-merge (main always green), where the guard re-verifies reference state.
+3. **Locally controlled git state.** Every query the guard makes goes through the local
+   `git` the developer controls — replace refs, `GIT_*` redirection,
+   skip-worktree/assume-unchanged bits, a doctored `git` on PATH, or editing the guard
+   file itself. Out of scope: a self-audit tool cannot attest the environment it runs in
+   (shallow clones, the one detectable shape, ARE refused). This is the round-8
+   documented threat boundary: local-run distortion, incapable of reaching `main` unseen
+   because the merge diff exposes any actually-committed tampering.
+4. **Checkout-transform boundary.** Git may transform bytes between the object database
+   and the working tree (`.gitattributes` text/eol, clean/smudge filters). Golden
+   verification pins RAW PHYSICAL bytes via `hash-object --no-filters` (round-8), but the
+   seed/fixtures legs ride on `git diff`, which respects filters — physically different
+   working bytes can appear "unchanged" to those two legs (the committed-HEAD leg
+   compares commit trees and is immune). Out of scope: same local-run boundary as (3);
+   committed blobs — what a merge propagates and a fresh clone materializes — are fully
+   verified, per the round-8 decision recorded in the guard's docstring.
+5. **`.gitkeep` allowlist.** `GOLDEN_ALLOWLIST` exempts the `.gitkeep` basename anywhere
+   under `tests/golden/`, so a file with that exact name escapes golden verification.
+   Out of scope: `.gitkeep` is directory-existence metadata that no pipeline or test ever
+   reads as reference data; weaponizing it would require source code that READS a
+   `.gitkeep`, which is a reviewable code change. The exemption is one named, greppable
+   constant.
+
 ## 2026-07-12 — T6: star schema + DuckDB SQL transforms
 
 **Result:** `make transform` runs clean → contract validation → SQL transforms →

@@ -3,8 +3,11 @@
 The SQL layer (`sql/01`–`04`, `06`) turns the cleaned, contract-validated seed tables into a
 star schema plus the raw inputs each `docs/methodology/v1.md` §5 scoring component needs.
 It deliberately stops **before** scoring: no min–max scaling, no weights, no final scores —
-those arrive in T7 as `sql/05_final_goat_scores.sql`, driven by `pipeline/score.py` with
-weights injected from `config/scoring_v1.yaml`. Everything here is objective-layer (v1.md §1).
+everything here is objective-layer (v1.md §1). Scoring is T7's `sql/05_final_goat_scores.sql`
+(one implementation for career scope, peak scope, and Custom Mode), driven by
+`pipeline/score.py`, which injects the weighting layer from `config/scoring_v1.yaml`, guards
+the output, and stamps provenance; `pipeline/compare.py` derives pairwise verdicts from the
+scored table (v1.md §6 — no separate math).
 
 Run it with `make transform` (clean → contracts → transform → validation checks →
 `data/marts/`, gitignored and regenerable). `pipeline/transform.py` enforces the
@@ -26,7 +29,10 @@ that the methodology calls a parameter.
 - **Marts** — analysis-ready outputs derived from the facts:
   `mart_player_season_metrics` (per-season era-relative metrics, 335),
   `mart_player_component_inputs` (per-player raw component values, 20),
-  `mart_player_award_rates` (per-player per-award rates, 120 = 20 × 6).
+  `mart_player_award_rates` (per-player per-award rates, 120 = 20 × 6),
+  `mart_final_scores` (T7: one row per player per scored run — six 0–100
+  component scores, the final GOAT score, and the §6 rank; peak-scope runs
+  carry no longevity column because §7 drops that component).
 
 Facts and dims stay normalized (joins go through keys); marts may denormalize `player_name`
 for legibility because they are what the report reads.
@@ -46,7 +52,11 @@ erDiagram
 
 Every derived column is traceable to a methodology section; the hand worksheet
 (`docs/methodology/v1_hand_worksheet.md`) verifies the whole chain on the locked fixture trio
-(`tests/unit/test_transforms.py`).
+(`tests/unit/test_transforms.py`). One documented blind spot: every trio career is shorter than
+`peak_n`, so the worksheet and golden snapshot cannot numerically pin top-5 **window sizing**
+itself — that is pinned by the seven-season pools in `tests/unit/test_transforms.py` and the
+end-to-end seven-season scoring test in `tests/unit/test_scoring_invariants.py`, while any
+config-value drift in `peak_n` is caught structurally by the golden config hash.
 
 ### `dim_season` (built in `sql/02_staging.sql`)
 
@@ -97,6 +107,18 @@ On the real seed, the null-rate case is exercised by DPOY for exactly Wilt Chamb
 Jerry West, Bill Russell, and Oscar Robertson (retired before 1983) — the Bill Russell worked
 example of v1.md §12.7, reproduced mechanically.
 
+### `mart_final_scores` (built in `sql/05_final_goat_scores.sql`, T7)
+
+| column | formula | v1.md |
+|---|---|---|
+| `comp_peak/longevity/playoff` | `MM(raw)` — `100·(x−min)/(max−min)` across the pool; a zero or noise-thin pool range is REFUSED as invalid input rather than scored (peak scope exempts the dropped longevity input) | §6, §9, ADR-0002 |
+| `comp_winning_impact` | `.50·MM(ws48) + .50·MM(srs_w)` (blend from config) | §5.3 |
+| `comp_efficiency` | `.50·MM(rel_ts_career) + .50·MM(spi_career)` (blend from config) | §5.6 |
+| `comp_accolades` | `Σ w_a·MM(rate_a) / Σ w_a` over the player's **eligible** awards — null rates excluded, weights renormalized; an exact pool-wide rate tie scores 50.0 (the §6 degenerate rule applies to award-rate elements only) | §5.5, §12.7 |
+| `goat_score` | `Σ w_c · comp_c`, weights injected per scope (peak: longevity dropped, others ÷ (1−w_longevity)) | §6–§8 |
+| `rank` | `ROW_NUMBER` over score desc, Peak desc, player_id asc — a total order, so ranks are unique 1..N | §6 |
+| `scope`, `method_version`, `git_sha` | provenance stamped by `pipeline/score.py` (echoed from config / `git rev-parse`) | §10.6 |
+
 ## Scope: one engine, many configurations (v1.md §7, §12.9)
 
 `sql/04` aggregates behind a single filter, selected by the injected `scope` parameter:
@@ -127,8 +149,9 @@ input shape; these guard what the SQL derived from it.
   can carry an outsized per-possession rate: Jerry West's 1967 postseason (1 game, 1 minute,
   1 rebound) grades P_SPI ≈ 1.05. The contribution is bounded by construction —
   `p_spi × po_gp` adds ~1.05 of his 206.6 career playoff raw (~0.5%, ≈0.05 final GOAT points).
-  The cameo's per-season P_SPI is pinned by a regression test; the final-score effect is NOT
-  yet tested — it is asserted in T7 once scoring exists (QA log, "Deferred to T7"). A
+  Both ends are regression-tested: the cameo's per-season P_SPI in the transform suite, and
+  the end-to-end final-score effect in T7 (`test_west_cameo_marginal_impact`: removing only
+  the cameo moves West's final score by 0.05217 and leaves every other row bit-identical). A
   minimum-minutes qualifier would be a behavior-changing v2 decision, not a transform-layer
   fix.
 - **Era-gated stats ride along unscored.** `fg3m/fg3a`, `stl/blk`, `tov` are in
